@@ -1,0 +1,641 @@
+import contextlib
+import json
+import sys
+import functools
+import uuid
+from functools import partial
+from pathlib import Path
+from typing import Tuple
+
+import pyperclip
+from addict import Dict as Addict
+from nicegui import ui, app, native
+from nicegui.events import GenericEventArguments
+from fastapi import FastAPI
+from fastapi.requests import Request
+from loguru import logger
+
+from api import fastapi_app
+from models import Note
+from utils import cleanup
+from services import NoteService, AttachmentService
+
+# pyinstaller（注意 sqlalchemy 搭配 alembic 的主动迁移命令，导致打包后出错，需要考虑如何解决，虽然复制一个无数据 db 即可解决）
+try:
+    import addict
+    import aiosqlite
+    import loguru
+    import alembic
+    import sqlalchemy
+    import sqlalchemy_utc
+    import fastapi
+    import fastapi_offline
+except ImportError as exception:
+    logger.error(exception)
+
+# 移除默认的日志处理器
+logger.remove()
+# 控制台输出 - 彩色，简洁格式
+logger.add(
+    sys.stdout,
+    format="<c>{time:YYYY-MM-DD HH:mm:ss.SSS}</c> | <level>{level: <8}</level> | <cyan>{name}:{function}:{line}</cyan> - {message}",
+    level="DEBUG",
+    colorize=True,
+    backtrace=True,
+    diagnose=True
+)
+# 详细日志文件 - 包含所有级别
+logger.add(
+    str("debug.log"),
+    format="<c>{time:YYYY-MM-DD HH:mm:ss.SSS}</c> | <level>{level: <8}</level> | <cyan>{name}:{function}:{line}</cyan> - {message}",
+    level="DEBUG",
+    rotation="10 MB",
+    retention="7 days",
+    compression="gz",
+    backtrace=True,
+    diagnose=True
+)
+
+
+# [note] 重点笔记，可以非深度思考模式问 ai 一些 tailwind css 元素问题，不要太复杂，很好用！
+# [note] 前端在开发阶段要求可用即可，如骨架、按钮响应等，关键还是进行后端部分的开发！
+
+
+def build_header() -> ui.header:
+    # [step] 使用 ui.icon 找到的图标不生效，发现需要导入
+    ui.add_head_html(
+        '<link href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" rel="stylesheet" />')
+
+    # [css note] bg-white 背景白色，shadow-sm 加一个微妙的阴影，header 看起来浮在内容上方，自然形成边界
+    with ui.header().classes("bg-white shadow-sm") as header:
+        with ui.row().classes("w-full mx-auto flex justify-center items-center px-4 sm:px-6 md:px-8"):
+            with ui.row().classes("flex items-center gap-x-1"):
+                # [step] 搜索 ui.icon 的资料 -> 参考 Quasar 的图标文档来查看所有可用的图标（https://quasar.dev/vue-components/icon -> https://pictogrammers.com/library/mdi/icon/note/）
+                # [step] ai: nicegui 如何设置 ui.label 和 ui.icon 的大小和颜色？
+                ui.icon(name="mdi-note", size="24px").classes("text-black")
+                ui.label("笔记管理系统").classes("text-xl text-black font-semibold")
+
+            # 充当占位符
+            ui.space()
+
+            with ui.row():
+                with ui.button("列表视图", on_click=go_main):
+                    pass
+                with ui.button("新建笔记", on_click=go_add_note):
+                    pass
+    return header
+
+
+def build_footer() -> ui.footer:
+    # [css note] ui.header 的阴影效果无用，ui.footer 还得用经典效果
+    with ui.footer().classes("bg-white border-t border-gray-200") as footer:
+        pass
+
+    return footer
+
+
+def go_main():
+    ui.navigate.to("/")
+
+
+def go_add_note():
+    ui.navigate.to(f"/add_or_edit_note?temporary_uuid={uuid.uuid4()}")
+
+
+def go_edit_note(note_id: int):
+    ui.navigate.to(f"/add_or_edit_note?note_id={note_id}&temporary_uuid={uuid.uuid4()}")
+
+
+def go_get_note(note_id: int):
+    ui.navigate.to(f"/get_note?note_id={note_id}")
+
+
+def see_attachment():
+    with ui.dialog() as dialog, ui.card():
+        with ui.row().classes("w-full flex items-center justify-between"):
+            ui.label("附件列表")
+            ui.button(icon="mdi-close", on_click=dialog.close).props("flat")
+
+        ui.separator()
+
+        def temp_create_card():
+            with ui.card():
+                # [question] 这个 gap-32 是绝对值，适应性如何？
+                with ui.row().classes("w-full flex items-center justify-between gap-32"):
+                    with ui.column().classes("gap-y-0"):
+                        # [step] ai: ui.label("项目规划流程图.png") 我想设置最大显示长度 -> 设置最大宽度并启用文本截断
+                        ui.label("项目规划流程图.png").classes("max-w-32 truncate text-ellipsis")
+                        ui.label("2.4MB · PNG").classes("text-gray-500 text-xs")
+                    with ui.row().classes("gap-0"):
+                        ui.button(icon="mdi-download-outline").props("flat dense")
+                        ui.button(icon="mdi-trash-can-outline").props("flat dense").classes("text-red")
+
+        temp_create_card()
+        temp_create_card()
+
+        ui.separator()
+
+        with ui.row().classes("w-full flex items-center justify-end"):
+            ui.button("关闭", on_click=dialog.close)
+
+    dialog.open()
+
+
+with open("test_notes.json", "r", encoding="utf-8") as f:
+    notes_json = Addict(json.load(f))
+
+
+@ui.page("/get_note", title="笔记详情")
+async def page_get_note(request: Request, note_id: int):
+    # [question] 新增 page 导致点击时页面需要刷新，有没有更流畅的办法呢？有的，定义一个 div，然后通过调用 clear 方法，重新构建 div
+
+    build_header()
+    build_footer()
+
+    async def get_note():
+        async with NoteService() as service:
+            # [knowledge] [Rust 的 Result 类型详解](https://lxblog.com/qianwen/share?shareId=c6059ca1-51c6-4424-876d-6e2019bfb925)
+            result = await service.get(note_id)
+            logger.debug("result: {}", result)
+            return result.unwrap()
+
+    note: Note | Addict = await get_note()
+    logger.debug(f"note_id: {note_id}")
+
+    with ui.column().classes("w-full mx-auto px-4 sm:px-6 md:px-8"):
+        with ui.row().classes("w-full flex items-center gap-x-1"):
+            ui.button(icon="mdi-arrow-left", on_click=go_main).props("flat round").classes("text-black")
+            ui.label("笔记详情")
+
+        with ui.card().classes("w-full"), ui.column().classes("w-full px-4 py-8"):
+            # 拆分出去，利用 functools.partial 传参...
+            def copy_note(text):
+                pyperclip.copy(text)
+                ui.notify("复制到剪切板成功")
+
+            with ui.row().classes("w-full flex items-center justify-between"):
+                title = ui.label(note.title).classes("text-black font-semibold text-2xl")
+                copy = ui.button(icon="mdi-content-copy", on_click=partial(copy_note, text=title.text))
+                copy.classes("text-[10px]").props("flat dense color=grey")  # text-xs 12px 不够小
+
+            # [step] ai: ui.textarea 最下面的虚线可以隐藏吗？通过设置 autogrow 自动变化，会隐藏 resize 控件
+            textarea = ui.textarea(value=note.content).classes("w-full").props("readonly autogrow")
+            with textarea.add_slot("append"):
+                copy = ui.button(icon="mdi-content-copy", on_click=partial(copy_note, text=textarea.value))
+                copy.classes("text-[10px]").props("flat dense color=grey")
+
+            with ui.column().classes("w-full gap-y-1"):
+                with ui.row().classes("w-full flex items-center justify-between"):
+                    ui.label("附件")
+                    ui.button("查阅附件", on_click=see_attachment).props("flat icon-right=mdi-chevron-right dense")
+
+                async with AttachmentService() as service:
+                    result = await service.count_attachment(note_id)
+                    ui.label(f"{result.unwrap()} 个附件").classes("text-gray-600")
+            with ui.row():
+                ui.button("工作")
+            ui.separator()
+
+            with ui.row().classes("w-full flex items-center justify-between"):
+                ui.label(f"创建于：{note.created_at} · 更新于：{note.updated_at}")
+                with ui.row().classes("flex items-center gap-x-1"):
+                    edit_on_click = partial(go_edit_note, note_id=note_id)
+                    ui.button("编辑", icon="mdi-square-edit-outline", on_click=edit_on_click).props("flat dense")
+
+                    async def delete_note():
+                        async def confirm():
+                            async with NoteService() as service:
+                                result = await service.delete(note_id)
+                                if result.is_ok():
+                                    ui.notify(f"删除笔记 {note_id} 成功", type="positive")
+                                    dialog.close()
+                                    ui.timer(0.8, lambda: go_main(), once=True)
+                                else:
+                                    ui.notify(f"删除笔记 {note_id} 失败，原因：{result.err()}", type="negative")
+
+                        # ┌─────────────────────┐
+                        # │   Are you sure?     │
+                        # ├─────────────────────┤
+                        # │ [confirm]  [cancel] │
+                        # └─────────────────────┘
+                        with ui.dialog() as dialog, ui.card().classes("shadow-xl border-1 border-gray-200"):
+                            with ui.column().classes("w-full flex content-end"):
+                                with ui.row().classes("items-center p-4"):
+                                    ui.icon("warning_amber", size="2rem").classes("text-yellow-500")
+                                    ui.label("确认删除").classes("text-xl font-bold text-gray-800 ml-2")
+                                ui.label("确认要删除吗？").classes("text-center text-gray-600 p-4")
+                                with ui.row().classes("justify-center gap-4 p-4"):
+                                    ui.button("确认", icon="delete", on_click=confirm).props("flat color=red")
+                                    ui.button("取消", icon="close", on_click=dialog.close).props("flat color=gray")
+
+                        dialog.open()
+
+                    delete = ui.button("删除", icon="mdi-trash-can-outline", on_click=delete_note)
+                    delete.props("flat dense").classes("text-red")
+
+
+@ui.page("/add_or_edit_note", title="新增或编辑笔记")
+async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: int = None):
+    """
+
+    :param request: fastapi Request
+    :param note_id: note_id 存在为编辑，不存在为新增
+    :param temporary_uuid: 供新增使用，为了定位到上传的附件
+    """
+
+    # ====== 涉及 header, footer, add_css, add_head_html ====== #
+
+    build_header()
+    build_footer()
+
+    ui.add_css("""
+    .nms-drag-area.nms-dragover {
+        border: 2px dashed #4a90e2;
+        background-color: #f0f7ff;
+        transition: all 0.2s;
+    }
+    """)
+
+    def create_upload_attachment_card() -> Tuple[ui.card, ui.label]:
+        """创建当前页面的上传附件 card，目前的设定该函数只能在初始化阶段使用一次"""
+        with ui.card().classes("w-full flex items-center") as card:
+            with ui.row().classes("w-full flex justify-center"):
+                ui.icon(name="mdi-attachment", size="24px")
+            card_label = ui.label("暂无附件，点击上传或粘贴图片")
+
+            # 监听文件拖拽事件
+            card.classes("nms-drag-area")
+
+            def delay_register():
+                def on_dragover(e: GenericEventArguments):
+                    # logger.debug("python dragover event: add nms-dragover class")
+
+                    # dragover 会被反复触发，是否会导致添加一堆重复 class？
+                    card.classes("nms-dragover")
+
+                def on_dragenter(e: GenericEventArguments):
+                    logger.debug("python dragenter event: add nms-dragover class")
+
+                    # logger.debug("e.args: {}", e.args)
+
+                    # isTrusted: False 表示这个事件不是由用户直接触发的，而是由程序代码触发的
+                    if not e.args["isTrusted"]:
+                        # logger.debug("111")
+                        # card.classes("bg-blue-500")
+                        logger.debug("card: {}", id(card))
+
+                def on_dragleave(e: GenericEventArguments):
+                    # logger.debug("python dragleave event: remove nms-dragover class")
+
+                    card.classes(remove="nms-dragover")
+
+                def on_drop(e: GenericEventArguments):
+                    # logger.debug("python drop event: remove nms-dragover class")
+
+                    card.classes(remove="nms-dragover")
+
+                card.on("dragover", on_dragover)
+                card.on("dragleave", on_dragleave)
+                # card.on("dragenter", on_dragenter)  # 这个似乎没什么用
+                card.on("drop", on_drop)
+
+            # 由于未能找到 python 层面的 preventDefault，所以需要在 DOM 加载后通过 js 层调用 preventDefault，而 ui.timer 似乎比 DOMContentLoaded 更晚，否则 drop 事件会在 js 层之前注册，依旧无效
+            ui.timer(0, delay_register, once=True)
+
+            async def on_nms_upload_success(e: GenericEventArguments):
+                logger.debug("upload success")
+                # 上传成功（非保存页面），应该使用 temporary_uuid 查询数量（注意，这编辑和新增耦合严重，需要考虑解决...）
+                async with AttachmentService() as attachment_service:
+                    existing_count = 0
+                    logger.debug("note_id: {}", note_id)
+                    if note_id is not None:
+                        existing_result = await attachment_service.count_attachment(note_id)
+                        if result.is_err():
+                            ui.notify(f"上传失败，原因：{result.err()}", type="negative")
+                            return
+                        existing_count = existing_result.unwrap()
+                    temporary_result = await attachment_service.count_attachment_by_temporary_uuid(temporary_uuid)
+                    count = temporary_result.unwrap() + existing_count
+                    card_label.text = f"共 {count} 个附件，点击上传或粘贴图片"
+
+            card.on("nms_upload_success", on_nms_upload_success)
+
+        ui.add_head_html("""
+        <script>
+        document.addEventListener("DOMContentLoaded", function() {{
+            const container = document.querySelector("#c{container_id}");
+            // 阻止默认行为，允许 drop 事件触发（dragover 也得阻止，否则有问题）
+            // 实践发现，不止需要阻止默认行为，python 层面的监听器存在缺陷，这种拖拽文件上传我需要考虑通过 js 层实现了
+            container.addEventListener("dragover", function(e) {{
+                console.log("dragover");
+                e.preventDefault();
+                e.stopPropagation();
+            }});
+
+            container.addEventListener("drop", function(e) {{
+                console.log("drop");
+                e.preventDefault();
+                e.stopPropagation();
+
+                // 获取拖拽的文件
+                const files = Array.from(e.dataTransfer.files);
+                if (files.length === 0) return;
+
+                const urlParams = new URLSearchParams(window.location.search);
+                const temporary_uuid = urlParams.get("temporary_uuid");
+
+                if(temporary_uuid === null) {{
+                    console.log("temporary_uuid === null && note_id === null");
+                    alert("上传过程中发生错误");
+                    return;
+                }}
+
+                // 创建 FormData 用于上传
+                const formData = new FormData();
+                files.forEach(file => formData.append("files", file));
+
+                let url = "/api/upload" + `?temporary_uuid=${{temporary_uuid}}`;
+                console.log("url: ", url);
+
+                // 发送 POST 请求到后端
+                fetch(url, {{
+                    method: "POST",
+                    body: formData
+                }}).then(response => {{
+                    if (response.ok) {{
+                        console.log("上传成功");
+                        container.dispatchEvent(new Event("dragenter"));
+                        // container.dispatchEvent(new CustomEvent("nms_upload_success"));
+                        container.dispatchEvent(new Event("nms_upload_success"));
+
+                        const ws = new WebSocket("ws://" + window.location.host + "/ws");
+
+                        // 等待连接建立完成后再发送消息
+                        ws.onopen = function() {{
+                            console.log("WebSocket connected successfully");
+                            ws.send("hello"); // 现在连接已建立，可以安全发送
+                        }};
+
+                        // 处理收到的消息
+                        ws.onmessage = function(event) {{
+                            console.log("Message from server:", event.data);
+                        }};
+
+
+                        // 处理错误
+                        ws.onerror = function(error) {{
+                            console.error("WebSocket error:", error);
+                        }};
+
+                        // 处理连接关闭
+                        ws.onclose = function(event) {{
+                            console.log("WebSocket closed", event);
+                        }};
+
+                        // 重新加载页面或更新UI（根据需求调整）
+                        // location.reload();
+                    }} else {{
+                        alert("文件上传失败");
+                    }}
+                }}).catch(error => {{
+                    console.error("上传错误:", error);
+                    alert("上传过程中发生错误");
+                }});
+            }});
+        }});
+        </script>
+        """.format(container_id=card.id))
+
+        return card, card_label
+
+    # request type: <class 'starlette.requests.Request'>
+    logger.debug("request type: {}", type(request))
+    logger.debug("note_id: {}", note_id)
+
+    is_add_note_page = True if note_id is None else False
+
+    if is_add_note_page:
+        ui.page_title("新增笔记")
+    else:
+        ui.page_title("编辑笔记")
+
+    with ui.column().classes("w-full mx-auto px-4 sm:px-6 md:px-8"):
+        with ui.row().classes("w-full flex items-center gap-x-1"):
+            # [step] ai: ui.icon(name="mdi-arrow-left", size="24px") 可以点击吗？发现 icon 其实是字体，所以改完颜色居然还是默认蓝色
+            ui.button(icon="mdi-arrow-left", on_click=go_main).props("flat round").classes("text-black")
+            if is_add_note_page:
+                ui.label("新增笔记")
+            else:
+                ui.label("编辑笔记")
+        with ui.card().classes("w-full"), ui.column().classes("w-full px-4 py-8"):
+            title = ui.input(placeholder="输入笔记标题...").classes("w-full")
+            content = ui.textarea(placeholder="输入笔记内容...").classes("w-full")
+
+            with ui.column().classes("w-full"):
+
+                with ui.row().classes("w-full justify-between"):
+                    ui.label("附件")
+                    ui.button("上传附件")
+
+                upload_attachment_card, upload_attachment_card_label = create_upload_attachment_card()
+
+                with ui.row().classes("flex items-center"):
+                    # 占位符，此处实际是标签，用 button 不合理
+                    ui.button("工作")
+                    ui.button("添加标签", icon="mdi-plus").props("flat dense")
+                with ui.row().classes("w-full justify-end"):
+                    async def save_note():
+                        if not title.value:
+                            ui.notify(f"标题不能为空", type="negative")
+                            return
+                        if not content.value:
+                            ui.notify(f"内容不能为空", type="negative")
+                            return
+
+                        # 新增页面，有 temporary_uuid，需要更新 attachment
+                        # 编辑页面，没有 temporary_uuid 有 note_id，不必考虑 attachment，上传文件时即绑定
+                        if is_add_note_page:
+                            async with NoteService() as note_service:
+                                result = await note_service.create(title=title.value, content=content.value)
+                                if result.is_err():
+                                    ui.notify(f"错误：{result}", type="negative")
+                                else:
+                                    # note 创建完毕，由于上传附件不是在保存时统一上传，所以保存时，需要更新附件表
+                                    instance = result.unwrap()
+                                    async with AttachmentService() as attachment_service:
+                                        await attachment_service.update_by_temporary_uuid(temporary_uuid, **dict(
+                                            note_id=instance.id,
+                                            temporary_uuid=None
+                                        ))
+
+                                    # 新增笔记页面需要清空
+                                    if is_add_note_page:
+                                        title.value = ""
+                                        content.value = ""
+                                        upload_attachment_card_label.text = "暂无附件，点击上传或粘贴图片"
+                                    ui.notify(f"保存笔记成功！", type="positive")
+                                    ui.timer(0.8, lambda: go_main(), once=True)
+                        else:
+                            async with NoteService() as service:
+                                result = await service.update(note_id, title=title.value, content=content.value)
+                                if result.is_ok():
+                                    async with AttachmentService() as attachment_service:
+                                        await attachment_service.update_by_temporary_uuid(temporary_uuid, **dict(
+                                            note_id=note_id,
+                                            temporary_uuid=None
+                                        ))
+                                    ui.notify(f"编辑笔记成功！", type="positive")
+                                else:
+                                    ui.notify(f"编辑笔记失败，原因：{result.err()}", type="positive")
+
+                    ui.button("保存笔记", on_click=save_note)
+
+    # 填充编辑页面
+    if not is_add_note_page:
+        async with NoteService() as service:
+            result = await service.get_note_with_attachments(note_id)
+            if result.is_err():
+                # todo: 应该弹全局错误弹窗
+                raise Exception(result.err())
+            note = result.unwrap()
+            logger.debug("note: {}", note)
+            attachments = note.attachments
+
+        title.value = note.title
+        content.value = note.content
+
+        logger.debug("attachments: {}", attachments)
+        count = len(attachments)
+
+        upload_attachment_card_label.text = f"共 {count} 个附件，点击上传或粘贴图片"
+
+
+@ui.page("/", title="笔记管理系统")
+async def page_main():
+    # request
+    # logger.debug("request type: {}", type(request))
+
+    # ====== 开始构建 ui（我将使用 `[step]` 详细记录自己的开发过程，step 代指我在编写这段代码，行动上做了什么） ====== #
+
+    # [step] 使用 region 进行注释拆分的时候发现页面结构基本按照下列方式分层，故而拆分成函数
+    build_header()
+    build_footer()
+
+    async def build_table(table, search_content: str | None = None) -> ui.element:
+        """page_main:build_table"""
+        with table:
+            async def create_card(_note: Note, count: int) -> ui.card:
+                # todo: 骨架与实现推荐拆分（看情况，临时设想）
+                with ui.card() as card:
+                    with ui.column().classes("w-full flex items-center"):
+                        with ui.row().classes("w-full flex items-center justify-between"):
+                            ui.label(_note.title)
+                            ui.space()
+                            ui.label(str(_note.created_at))
+
+                        ui.markdown(_note.content).classes("w-full")
+
+                        with ui.row().classes("w-full flex items-center justify-between"):
+                            # 这个应该也是个按钮吧，有前缀图标和文字内容
+                            ui.label(f"{count} 个附件")
+                            # 这个点击后将进入笔记阅读页面
+                            eye = ui.button(icon="mdi-eye-outline", on_click=partial(go_get_note, note_id=_note.id))
+                            eye.props("flat round")
+                return card
+
+            async with NoteService() as service:
+                if search_content:
+                    _addict = Addict()
+                    _addict.search_content = search_content
+                    notes = await service.get_notes(_filter=_addict)
+                else:
+                    result = await service.list_all()
+                    notes = result.unwrap()
+
+            # todo: 分页展示？
+            async with AttachmentService() as attachment_service:
+                for note in notes:
+                    result = await attachment_service.count_attachment(note.id)
+                    await create_card(note, result.unwrap())
+
+            # todo: 能否实现先渲染，数据到了再更新呢？
+
+            # 末尾要求也有一个 card，但是这个 card 是虚线外框，内部一个大大的 + 按钮，下面为新建笔记标题和点击创建新笔记的副标题
+            def tmp_create_card_by_ai():
+                # doc: 临时函数，函数含义视为注释
+                with ui.card().classes("border-dashed border-2 border-gray-400 p-6 items-center"):
+                    with ui.column().classes("flex items-center gap-y-0"):
+                        ui.button(icon="add", on_click=go_add_note).props("round size=lg").classes("text-4xl")
+                        ui.label("新建笔记").classes("text-xl mt-4")
+                        ui.label("点击创建新笔记").classes("text-gray-500 text-sm mt-1")
+
+            # 结构满足我的要求，但是在的位置不对，新建笔记太麻烦了，除非分页展示，否则无意义
+            tmp_create_card_by_ai()
+        return table
+
+    # [note] 由于 nicegui 简单但是也复杂，任何技术妄图说掌握是不可能的，为此我选择按照个人理解先搭建骨架
+    with ui.column().classes("w-full mx-auto px-4 sm:px-6 md:px-8 ") as content:
+        # [step] 前往 tailwind css 官网搜索，解决元素分布问题
+        # [css note] flex 似乎必须添加，因为 items-center justify-between 都需要基于 flex，w-full 的目的是继承父容器宽度，这样直接展开了
+        with ui.row().classes("w-full flex items-center justify-between"):
+            ui.label("我的笔记")
+
+            ui.space()
+
+            with ui.row():
+                # [step] ai: ui.input(placeholder="搜索笔记...") 能不能在左侧添加一个搜索icon
+                with ui.input(placeholder="搜索笔记...") as search_input:
+                    # search_input.classes("border rounded-lg") # 四周有线，四角椭圆
+                    with search_input.add_slot("prepend"):
+                        ui.icon("mdi-magnify").classes("ml-2")
+
+                # 监听回车键
+                async def on_enter_pressed():
+                    logger.debug("on_enter_pressed called")
+                    nonlocal table
+                    table.clear()
+                    await build_table(table, search_content=search_input.value)
+
+                search_input.on("keydown.enter", on_enter_pressed)
+
+                # [question] value 能否类似 django 的 choices，一个是指代符号，一个是 human text
+                # todo: 实现 value 切换导致下面的 table 刷新（说起 table，nicegui 有 table 扩展库诶）
+                ui.select(["全部笔记", "最近编辑", "有附件"], value="全部笔记")
+
+        # [note] 经验告诉我，选择 ui.row 比较好，而不是 ui.grid
+        # [note] grid 整个偏左，最开始设置 mx-auto 但是不太好，w-full 直接动态展开，还不错
+        table = ui.grid(columns=3).classes("w-full")
+        await build_table(table)
+
+
+@app.on_startup
+async def startup_event():
+    logger.debug("app - startup")
+    await cleanup.start()
+
+
+@app.on_shutdown
+async def shutdown_event():
+    logger.debug("app - shutdown")
+    await cleanup.stop()
+
+
+if __name__ in {"__main__", "__mp_main__"}:
+    # [knowledge] 在创建 NiceGUI 应用时保留 FastAPI 的文档路由（不要让 nicegui 接管根路径）
+    app.mount("/api", fastapi_app)
+
+    props = Addict()
+    props.title = "笔记管理系统"
+    props.host = "localhost"
+
+    if not getattr(sys, "frozen", False):
+        ui.run(title=props.title, host=props.host, port=8000)
+    else:
+        ui.run(
+            title=props.title,
+            host=props.host,
+            port=native.find_open_port(),
+            native=True,
+            window_size=(800, 600),
+            fullscreen=False,
+            reload=False)

@@ -1,0 +1,146 @@
+<component name="InspectionProjectProfileManager">
+  <profile version="1.0">
+    <option name="myName" value="Project Default" />
+    <inspection_tool class="PyMethodMayBeStaticInspection" enabled="false" level="WEAK WARNING" enabled_by_default="false" />
+    <inspection_tool class="PyPackageRequirementsInspection" enabled="true" level="WARNING" enabled_by_default="true">
+      <option name="ignoredPackages">
+        <list>
+          <option value="aiofiles" />
+          <option value="aiohappyeyeballs" />
+          <option value="aiohttp" />
+          <option value="aiosignal" />
+          <option value="aiosqlite" />
+          <option value="altgraph" />
+          <option value="annotated-doc" />
+          <option value="annotated-types" />
+          <option value="anyio" />
+          <option value="asgiref" />
+          <option value="asttokens" />
+          <option value="attrs" />
+          <option value="auto-py-to-exe" />
+          <option value="bcrypt" />
+          <option value="bidict" />
+          <option value="bottle" />
+          <option value="bottle-websocket" />
+          <option value="certifi" />
+          <option value="cffi" />
+          <option value="charset-normalizer" />
+          <option value="click" />
+          <option value="clr-loader" />
+          <option value="colorama" />
+          <option value="contourpy" />
+          <option value="cycler" />
+          <option value="decorator" />
+          <option value="deepdiff" />
+          <option value="deprecation" />
+          <option value="django" />
+          <option value="docutils" />
+          <option value="eel" />
+          <option value="executing" />
+          <option value="fastapi" />
+          <option value="fastapi-offline" />
+          <option value="fonttools" />
+          <option value="frozenlist" />
+          <option value="future" />
+          <option value="geojson" />
+          <option value="gevent" />
+          <option value="gevent-websocket" />
+          <option value="greenlet" />
+          <option value="h11" />
+          <option value="httpcore" />
+          <option value="httptools" />
+          <option value="httpx" />
+          <option value="idna" />
+          <option value="ifaddr" />
+          <option value="importlib-resources" />
+          <option value="ipython" />
+          <option value="ipython-pygments-lexers" />
+          <option value="itsdangerous" />
+          <option value="jedi" />
+          <option value="jinja2" />
+          <option value="kiwisolver" />
+          <option value="loguru" />
+          <option value="lupa" />
+          <option value="lxml" />
+          <option value="markdown2" />
+          <option value="markupsafe" />
+          <option value="matplotlib" />
+          <option value="matplotlib-inline" />
+          <option value="multidict" />
+          <option value="networkx" />
+          <option value="nicegui" />
+          <option value="numpy" />
+          <option value="orderly-set" />
+          <option value="orjson" />
+          <option value="packaging" />
+          <option value="pandapower" />
+          <option value="pandas" />
+          <option value="parso" />
+          <option value="passlib" />
+          <option value="pefile" />
+          <option value="pillow" />
+          <option value="portpicker" />
+          <option value="prettytable" />
+          <option value="prompt-toolkit" />
+          <option value="propcache" />
+          <option value="proxy-tools" />
+          <option value="psutil" />
+          <option value="pure-eval" />
+          <option value="pycparser" />
+          <option value="pydantic" />
+          <option value="pydantic-core" />
+          <option value="pydantic-settings" />
+          <option value="pyecharts" />
+          <option value="pygments" />
+          <option value="pyinstaller" />
+          <option value="pyinstaller-hooks-contrib" />
+          <option value="pyparsing" />
+          <option value="python-dateutil" />
+          <option value="python-dotenv" />
+          <option value="python-engineio" />
+          <option value="python-multipart" />
+          <option value="python-socketio" />
+          <option value="pythonnet" />
+          <option value="pytz" />
+          <option value="pywebview" />
+          <option value="pywin32-ctypes" />
+          <option value="pyyaml" />
+          <option value="requests" />
+          <option value="scipy" />
+          <option value="setuptools" />
+          <option value="simple-websocket" />
+          <option value="simplejson" />
+          <option value="six" />
+          <option value="sniffio" />
+          <option value="sqlparse" />
+          <option value="stack-data" />
+          <option value="starlette" />
+          <option value="tqdm" />
+          <option value="traitlets" />
+          <option value="typing-extensions" />
+          <option value="typing-inspection" />
+          <option value="tzdata" />
+          <option value="urllib3" />
+          <option value="uvicorn" />
+          <option value="watchfiles" />
+          <option value="wcwidth" />
+          <option value="websockets" />
+          <option value="win32-setctime" />
+          <option value="wsproto" />
+          <option value="yarl" />
+          <option value="zope-event" />
+          <option value="zope-interface" />
+          <option value="pscript" />
+          <option value="vbuild" />
+        </list>
+      </option>
+    </inspection_tool>
+    <inspection_tool class="SpellCheckingInspection" enabled="false" level="TYPO" enabled_by_default="false">
+      <option name="processCode" value="true" />
+      <option name="processLiterals" value="true" />
+      <option name="processComments" value="true" />
+    </inspection_tool>
+    <inspection_tool class="SqlDialectInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+    <inspection_tool class="SqlNoDataSourceInspection" enabled="false" level="WARNING" enabled_by_default="false" />
+  </profile>
+</component>
