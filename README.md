@@ -8,7 +8,20 @@
 - 列表视图支持分页、筛选、排序
 - 笔记详情页，笔记支持 label 和 markdown 格式渲染，label 类似于记事本，markdown 可以渲染基础 markdown 语法
 
-![img.png](images/img.png)
+## 安装指南
+
+访问 [uv 中文文档](https://uv.doczh.com/getting-started/installation/) 下载 uv
+
+打开当前项目根目录，执行：
+```bash
+uv init # 初始化项目
+uv venv .venv # 创建虚拟环境
+uv sync # 下载依赖库
+uv run ./main.py --native # 运行项目
+```
+
+注意事项：
+- ai 生成标题功能调用了 deepseek api，需要在根目录下创建 .env 文件，填充 DEEPSEEK_API_KEY 字段
 
 ## 项目结构
 ```txt
@@ -25,23 +38,19 @@
 └── README.md
 ```
 
-## 安装指南
+## 项目预览
 
-访问 [uv 中文文档](https://uv.doczh.com/getting-started/installation/) 下载 uv
+**主页**：
+![img.png](images/page_main.png)
 
-打开当前项目根目录，执行：
-```bash
-uv init # 初始化项目
-uv venv .venv # 创建虚拟环境
-uv sync # 下载依赖库
-uv run ./main.py --native # 运行项目
-```
+**笔记详情**：
+![img.png](images/page_get_note.png)
 
-注意事项：
-- ai 生成标题功能调用了 deepseek api，需要在根目录下创建 .env 文件，填充 DEEPSEEK_API_KEY 字段
+**编辑笔记**：
+![img.png](images/page_edit_note.png)
 
-
-
+**新建笔记**：
+![img.png](images/page_add_note.png)
 
 
 ## 开发感想
