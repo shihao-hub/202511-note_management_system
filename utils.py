@@ -496,4 +496,42 @@ def build_softmenu(icon="mdi-note", size="16px", color="blue-600") -> ui.button:
 
     return menu_button
 
+
+def show_file_dialog():
+    # [在 native 模式下改用系统对话框](https://lxblog.com/qianwen/share?shareId=429d4d1b-f53a-4ee0-83d9-700b6cdd5956]
+    # 必须判断是 native 且本地！（localhost/127.0.0.1）
+    # 本地桌面应用可以做很多事情！
+    import tkinter as tk
+    from tkinter import filedialog
+
+    title = ui.input(label="标题", value="默认标题")
+    content = ui.textarea(label="内容", value="这里是正文内容...")
+
+    def save_file_native():
+        # 创建隐藏的 Tk 窗口
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)  # 置顶，避免被盖住
+        file_path = filedialog.asksaveasfilename(
+            title="保存文件",
+            defaultextension=".txt",
+            filetypes=[("文本文件", "*.txt"), ("所有文件", "*.*")]
+        )
+        root.destroy()
+
+        if file_path:
+            try:
+                with open(file_path, "w", encoding="utf-8") as f:
+                    f.write(f"{title.value}\n\n{content.value}")
+                ui.notify(f"已保存到：{os.path.basename(file_path)}", type="positive")
+            except Exception as e:
+                ui.notify(f"保存失败：{e}", type="negative")
+
+    # 这个不错啊，可以参考，左侧命名随意，右侧是实际含义
+    export_handler = save_file_native
+
+    with ui.button(icon="menu"):
+        with ui.menu() as menu:
+            ui.menu_item("导出为文件", on_click=export_handler)
+
 # endregion
