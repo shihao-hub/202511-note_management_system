@@ -2,6 +2,12 @@ function test() {
     console.log("test test");
 }
 
+// todo:
+//      1. 将一个 page 中的 js 代码卸载一个 js 文件中
+//      2. 优化报错弹出，不要只用 alert，太丑了
+//      3. 了解如何不通过 npm 使用 vue（目的就是在 html 中嵌入式使用），如果可以做到，需要搞个 vue 插件进行语法分析
+//      4. 削弱对 js 的抵触心理
+
 
 document.addEventListener("keydown", function (e) {
     if (!(e.ctrlKey || e.metaKey)) {

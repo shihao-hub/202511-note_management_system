@@ -2,24 +2,121 @@ import functools
 import inspect
 import os
 import asyncio
-from typing import List, Sequence, Callable, Annotated
+from typing import List, Sequence, Callable, Annotated, Dict, AsyncGenerator, TypedDict, Any
 from datetime import datetime, timedelta, timezone
+from functools import partial
+from dataclasses import dataclass, field
 
+from openai import OpenAI, AsyncOpenAI
 from loguru import logger
+from result import Result, Ok, Err
 from sqlalchemy import select, delete
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession
-from openai import OpenAI, AsyncOpenAI
+from fastapi import Depends
 from nicegui import background_tasks, ui
-from result import Result, Ok, Err
+from nicegui.events import ValueChangeEventArguments
 
 from models import AsyncSessionLocal, Attachment
+from settings import dynamic_settings
+from services import UserConfigService
 
 
 class MiscUtils:
     pass
 
 
+# [2025-11-13] 装饰 save_note 时，出现了问题：
+#              RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
+#              This may happen if you try to create UI from a background task.
+#              To fix this, enter the target slot explicitly using `with container_element:`.
+#              已解决，大概是因为被装饰后找不到其所在容器了，所以需要新增第二个参数
+def debounce(delay: float, parent: ui.element, preventing: Annotated[Callable, "防抖成功的执行函数"] = None):
+    """通用防抖装饰器
+
+    Details:
+        1. 返回一个装饰器 decorator
+        2. 返回的装饰器 decorator 将传入的参数 func 封装成 wrapper 再返回
+        3. wrapper 会先判断任务是否存在，如果存在且未完成，则立刻终止。
+           如果任务不存在，则创建任务，创建的任务会睡眠 delay s 再执行任务
+
+    Digression:
+        1. 注意区别防抖和节流，
+           防抖：高频触发 → 只执行最后一次（等待静默期后执行）
+           节流：高频触发 → 固定间隔执行一次（如每 0.5s 最多执行一次）
+
+    Usage:
+        @debounce(0.5, row, preventing=lambda: ui.notify("触发防抖机制，保存失败", type="negative"))
+
+    """
+
+    def decorator(func):
+        if not inspect.iscoroutinefunction(func):
+            raise TypeError(
+                f"被装饰的函数 '{func.__name__}' 不是 async 函数。@debounce 仅支持 async def 定义的协程函数。")
+
+        task = None
+
+        @functools.wraps(func)
+        async def wrapper(*args, **kwargs):
+            nonlocal task
+            if task is not None and not task.done():
+                if preventing is not None:
+                    preventing()
+                task.cancel()
+
+            async def debounced_call():
+                await asyncio.sleep(delay)
+                with parent:
+                    await func(*args, **kwargs)
+
+            task = asyncio.create_task(debounced_call())
+            logger.debug("task type: {}, {}", type(task), task)
+
+        return wrapper
+
+    return decorator
+
+
 # region - template
+
+class Filters:
+    """filters.py - 数据库过滤功能 ?a=1&b=&c=3（试图参考 django 的 filters 库，serializers 和 django-ninja 也要注意）"""
+
+
+class Middlewares:
+    """middlewares.py - 中间件"""
+
+
+class Dependencies:
+    """dependencies.py - fastapi Depends"""
+
+    @staticmethod
+    async def get_db() -> AsyncGenerator[AsyncSession, None]:
+        """依赖项：提供异步数据库会话
+
+        使用方式：
+        - 在路由函数中：db: AsyncSession = Depends(get_db)
+
+        """
+        db = AsyncSessionLocal()
+        try:
+            yield db
+        finally:
+            await db.close()
+
+    DBSession = Annotated[AsyncSession, Depends(get_db)]
+    """类型别名（提高可读性）
+
+    示例路由：
+    @app.post("/users/", response_model=User)
+    async def create_user(user: User, db: DBSession):
+        db.add(user)
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    """
+
 
 class _Cleanup:
     """清理服务
@@ -256,59 +353,137 @@ def show_text_dialog(
         # [step] ai: [pre-wrap pre-line](https://lxblog.com/qianwen/share?shareId=520cd53e-04aa-427e-a97b-f67449f8a7f5)
         ui.label(content).classes("w-full mb-6 border-2 border-dashed rounded-sm p-4").style("white-space: pre-wrap")
 
+        # todo: 来多个 label，都有边框，很有意思
+
     dialog.open()
 
 
-# endregion
+class ConfigInfoTypedDict(TypedDict):
+    options: List  # 可选择的范围
+    option_name: str  # 数据库字段
+    default: Any  # select 的默认值
 
 
-# [2025-11-13] 装饰 save_note 时，出现了问题：
-#              RuntimeError: The current slot cannot be determined because the slot stack for this task is empty.
-#              This may happen if you try to create UI from a background task.
-#              To fix this, enter the target slot explicitly using `with container_element:`.
-#              已解决，大概是因为被装饰后找不到其所在容器了，所以需要新增第二个参数
-def debounce(delay: float, parent: ui.element, preventing: Annotated[Callable, "防抖成功的执行函数"] = None):
-    """通用防抖装饰器
+# [note] 锻炼了封装和抽象能力，将功能抽象出来并封装起来
+async def show_config_dialog(config_infos: Dict[str, ConfigInfoTypedDict], persistent: bool = False) -> None:
+    """展示配置弹窗
 
-    Details:
-        1. 返回一个装饰器 decorator
-        2. 返回的装饰器 decorator 将传入的参数 func 封装成 wrapper 再返回
-        3. wrapper 会先判断任务是否存在，如果存在且未完成，则立刻终止。
-           如果任务不存在，则创建任务，创建的任务会睡眠 delay s 再执行任务
+    主要结构是：
+                  关闭
 
-    Digression:
-        1. 注意区别防抖和节流，
-           防抖：高频触发 → 只执行最后一次（等待静默期后执行）
-           节流：高频触发 → 固定间隔执行一次（如每 0.5s 最多执行一次）
+        配置名1 | 配置项1
+        配置名2 | 配置项2
+        配置名3 | 配置项3
 
-    Usage:
-        @debounce(0.5, row, preventing=lambda: ui.notify("触发防抖机制，保存失败", type="negative"))
+                  确认
+    点击确认才进行数据更新，点击关闭按钮 dialog 才能关闭，
+    每个配置名和数据库的字段对应
+
+    Args:
+        config_infos: Map，元素是 <配置名, 配置项>（List[Tuple] 其实也可以，而且似乎更好理解，且有序）
+        persistent: dialog 是否是 persistent（即点旁边关不掉，但是有 bug，select 组件选择时可能会被关掉...）
+
+    """
+    if persistent:
+        # dialog.props("persistent") 提示 Coroutine '__call__' is not awaited？？？
+        dialog = ui.dialog().props("persistent")
+    else:
+        dialog = ui.dialog()
+
+    # todo: 参考一下渲染模式的样式，那个看起来更舒服呀！
+    with dialog, ui.card():
+        # [step] ai answer: 右上角关闭按钮（用绝对定位）
+        # [question] 绝对布局到底咋布局的？
+        # [do] 当前 dialog 的布局我看起来还可以接受
+        with ui.row().classes("w-full flex justify-end items-center pr-5"):
+            close = ui.icon("close").classes("cursor-pointer text-blue text-lg rounded-lg hover:bg-gray-200 ")
+            # close.classes("absolute top-2 right-2")
+            close.on("click", dialog.close)
+            # close = ui.button(icon="close", on_click=dialog.close)
+            # close.props("flat ").classes("absolute top-2 right-2")
+
+        with ui.grid(columns=3).classes("items-center"):
+            # 存储所有 select 的值的映射
+            select_values: Dict = {}
+            for name, info in config_infos.items():
+                ui.label(name).classes("text-center col-span-1")
+                select_values[name] = info["default"]
+
+                async def on_change(option_name: str, e: ValueChangeEventArguments):
+                    # 更新 select_values 值，便于确认按钮时统一处理
+                    select_values[option_name] = e.value
+
+                # Shadows name 'select' from outer scope，但是其实只要没有用 nonlocal 等关键字，就不用担心！
+                select = ui.select(info["options"], value=info["default"],
+                                    on_change=partial(on_change, info["option_name"]))
+                select.classes("col-span-2").props('input-style="text-align: center;"')
+
+            async def on_confirm_click():
+                modified = False
+                for _, info in config_infos.items():
+                    option_name = info["option_name"]
+                    async with UserConfigService() as service:
+                        select_value = select_values[option_name]
+                        value = await service.get_value(option_name)
+                        if select_value == value:
+                            continue
+                        modified = True
+                        logger.debug("[on_confirm_click] option_name: {}, value: {}", option_name, select_value)
+                        await service.set_value(option_name, select_value)
+                if modified:
+                    await refresh_page()
+                dialog.close()
+
+            ui.space().classes("col-span-2")
+            ui.button("确定", on_click=on_confirm_click).classes("col-span-1").props("flat")
+
+    dialog.open()
+
+
+async def refresh_page():
+    """刷新当前页面"""
+    await ui.run_javascript("location.reload()")
+
+
+def build_footer() -> ui.footer:
+    # [css note] ui.header 的阴影效果无用，ui.footer 还得用经典效果
+    with ui.footer().classes("bg-white border-t border-gray-200") as footer:
+        pass
+
+    return footer
+
+
+def build_softmenu(icon="mdi-note", size="16px", color="blue-600") -> ui.button:
+    """构建软件菜单
+
+    非通用，主要是软件 icon 处支持点击显示菜单
 
     """
 
-    def decorator(func):
-        if not inspect.iscoroutinefunction(func):
-            raise TypeError(
-                f"被装饰的函数 '{func.__name__}' 不是 async 函数。@debounce 仅支持 async def 定义的协程函数。")
+    # [step] 搜索 ui.icon 的资料 -> 参考 Quasar 的图标文档来查看所有可用的图标（https://quasar.dev/vue-components/icon -> https://pictogrammers.com/library/mdi/icon/note/）
+    # [step] ai: nicegui 如何设置 ui.label 和 ui.icon 的大小和颜色？
+    #        an: https://lxblog.com/qianwen/share?shareId=5e5d87f2-45af-4b86-80ad-aaf02de189dd
 
-        task = None
+    menu_button = ui.button(icon=icon).props(f"flat dense size={size} color={color}")
+    with menu_button, ui.menu(), ui.list():
+        ui.menu_item("主页", on_click=lambda: ui.navigate.to("/"))
+        ui.separator()
+        ui.menu_item("关于", auto_close=False, on_click=partial(show_about_dialog, version=dynamic_settings.version))
+        ui.separator()
 
-        @functools.wraps(func)
-        async def wrapper(*args, **kwargs):
-            nonlocal task
-            if task is not None and not task.done():
-                if preventing is not None:
-                    preventing()
-                task.cancel()
+        on_intruction_click = partial(show_text_dialog, content=dynamic_settings.intruction_content, title="使用介绍")
+        ui.menu_item("使用介绍", auto_close=False, on_click=on_intruction_click)
+        ui.separator()
 
-            async def debounced_call():
-                await asyncio.sleep(delay)
-                with parent:
-                    await func(*args, **kwargs)
+        ui.menu_item("待办事项", on_click=lambda: ui.navigate.to("/todolist"))
 
-            task = asyncio.create_task(debounced_call())
-            logger.debug("task type: {}, {}", type(task), task)
+        # [note] 一个 menu_item 既要展开子菜单，又要响应点击，这是冲突的
+        # with ui.menu_item("关于", auto_close=False).classes("items-center justify-between"):
+        #     # ui.icon("keyboard_arrow_right") # 有点丑啊
+        #     with ui.menu().props("anchor=\"top end\" self=\"top start\""), ui.list():
+        #         ui.menu_item("作者")
+        #         ui.menu_item("软件", on_click=show_about_dialog)
 
-        return wrapper
+    return menu_button
 
-    return decorator
+# endregion

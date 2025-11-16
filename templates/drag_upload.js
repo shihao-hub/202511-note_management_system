@@ -1,10 +1,11 @@
 function uploadFile(files, on_response_ok) {
     console.log(files);
     // 限制单个文件的上传大小（前端限制）
-    const maxFileSize = 3 * 1024 * 1024;
+    const maxMbNum = 10
+    const maxFileSize = maxMbNum * 1024 * 1024;
     for (const file of files) {
         if (file.size > maxFileSize) {
-            alert("文件大于 3MB，无法上传")
+            alert(`文件大于 ${maxMbNum}MB，无法上传`)
             return
         }
     }

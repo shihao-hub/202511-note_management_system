@@ -1,22 +1,34 @@
-from nicegui import ui
+import webbrowser
+from nicegui import ui, app
 
-# 正确包含换行符的字符串
-text = """快捷键：
-ctrl+s: 保存
-ctrl+v: 粘贴"""
+# 定义一个可被 JS 调用的函数
+@app.get('/open-external-link')
+def open_external_link(url: str):
+    webbrowser.open(url)
+    return {'status': 'ok'}
 
-# 方式1：直接赋值
-ta1 = ui.textarea('测试1', value=text).props('rows=5').classes('w-full')
+# 注入 JS 代码
+js_code = '''
+document.addEventListener('click', function(e) {
+    let el = e.target;
+    while (el && el.tagName !== 'A') {
+        el = el.parentElement;
+    }
+    if (el && el.href) {
+        e.preventDefault();
+        fetch('/open-external-link?url=' + encodeURIComponent(el.href))
+            .catch(err => console.error('Failed to open link:', err));
+    }
+});
+'''
 
-# 方式2：动态设置
-ta2 = ui.textarea('测试2').props('rows=5').classes('w-full')
-ta2.set_value("第一行\n第二行\n第三行")
+# 在页面加载时注入
+ui.add_head_html(f'<script>{js_code}</script>')
 
-# 按钮验证内容
-def show_repr():
-    print("TA1 内容 repr:", repr(ta1.value))
-    print("TA2 内容 repr:", repr(ta2.value))
-
-ui.button('打印内容', on_click=show_repr)
+# 示例 markdown
+ui.markdown('''
+这是一个测试：[点击这里去 Google](https://www.google.com)
+还有 [GitHub](https://github.com)
+''')
 
 ui.run()

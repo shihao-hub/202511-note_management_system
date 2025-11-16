@@ -7,7 +7,10 @@ from pydantic import BaseModel, Field
 
 # todo: 较为熟练地使用 pydantic
 
+# todo: 熟悉 python 原生的 TypedDict 和 dataclass
+
 # region - template
+
 T = TypeVar("T")
 
 
@@ -43,4 +46,5 @@ class ErrorResponse(BaseModel):
         json_encoders = {
             datetime: lambda v: v.isoformat()
         }
+
 # endregion

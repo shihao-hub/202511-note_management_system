@@ -1,5 +1,0 @@
-{
-  "save_note_cooldown": 1,
-  "attachment_upload_text": "共 {0} 个附件，粘贴上传或拖拽上传",
-  "intruction_content": "快捷键：\n\tctrl+s: 编辑笔记和保存笔记页面用于快捷保存\n\tctrl+v: 笔记正文输入框用于粘贴文本和上传文件"
-}
