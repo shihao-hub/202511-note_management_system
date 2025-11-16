@@ -152,11 +152,12 @@ class NoteService(Service[Note]):
         async with UserConfigService() as user_config_service:
             page_size = await user_config_service.get_page_size()
 
+        logger.debug("search_filter: {}", search_filter)
         search_filter = search_filter or {}
         search_content = search_filter.get("search_content", None)
         has_attachment = search_filter.get("has_attachment", None)
         note_type = search_filter.get("note_type", None)
-        order_by = search_filter.get("order_by", "id")
+        order_by = search_filter.get("order_by", "-updated_at") # 默认按 updated_at 倒叙排列
 
         stmt = select(select_field)
 
@@ -183,8 +184,9 @@ class NoteService(Service[Note]):
         if order_by_field is None:
             raise AttributeError(f"{order_by}({cls.model.__name__}) doesn't exist")
         if is_desc:
-            order_by_field = func.desc(order_by_field)
+            order_by_field = desc(order_by_field)
         # endregion
+        logger.debug("order_by: {}, order_by_field: {}", order_by, order_by_field)
 
         stmt = stmt.order_by(order_by_field)
 
