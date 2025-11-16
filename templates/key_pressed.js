@@ -54,5 +54,30 @@ document.addEventListener("DOMContentLoaded", function () {
             }
         }
     });
+
+    document.addEventListener('keydown', function (e) {
+
+        if (e.key === 'Tab' && e.target.tagName === 'TEXTAREA') {
+
+            e.preventDefault();
+
+            const start = e.target.selectionStart;
+
+            const end = e.target.selectionEnd;
+
+            const value = e.target.value;
+
+            // todo: templates 相关 js 要标识清楚在哪里被引用吧，不然找不到
+
+
+            // todo: 这么暴力吗？直接字符串拼接
+            // [参考优化方案](https://lxblog.com/qianwen/share?shareId=5d0b27c3-e599-48df-9663-09659f8488b6)
+            e.target.value = value.substring(0, start) + '\t' + value.substring(end);
+
+            e.target.selectionStart = e.target.selectionEnd = start + 1;
+
+        }
+
+    });
 })
 
