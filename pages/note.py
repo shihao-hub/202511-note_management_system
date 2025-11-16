@@ -2,6 +2,7 @@ import json
 import math
 import uuid
 from functools import partial
+from pathlib import Path
 from typing import Tuple, Dict
 
 import pyperclip
@@ -172,8 +173,13 @@ async def see_attachment(note_id: int, detail_page: bool = False):
                                 nonlocal performed_deletion
                                 performed_deletion = True
 
-                    # todo: 查看详情页面不支持删除（置灰即可）
-                    ui.button(icon="mdi-trash-can-outline", on_click=on_delete).props("flat dense").classes("text-red")
+                    # todo: 查看详情页面不支持删除（置灰 + 不可点击）
+                    delete = ui.button(icon="mdi-trash-can-outline")
+                    delete.props("flat dense").classes("text-red")
+                    if detail_page:
+                        delete.disable() # disable() 会自动添加禁用样式（置灰）并阻止点击事件
+                    delete.on("dblclick", on_delete)
+                    delete.tooltip("双击删除")
 
                 # todo: 此处可以存放一个隐藏组件，用于展开查看文件内容（只支持预览图片）
         return card
@@ -244,6 +250,9 @@ async def page_get_note(request: Request, note_id: int):
             # 标题行
             with ui.row().classes("w-full items-center justify-between mb-4"):
                 title = ui.label(note.title).classes("text-gray-900 font-bold text-2xl leading-tight")
+                # todo: 能否设置都能选中复制？好痛苦，浏览器真是个伟大的技术发明，多年的迭代，真复杂啊
+                # [textarea readonly 情况下，无法选中复制，label 也是](https://lxblog.com/qianwen/share?shareId=b5a8b90e-bef0-4605-8921-05de37afd4bd)
+                title.style("user-select: text; cursor: text;")
 
                 # todo: copy_btn 改为 menu（选项弹窗也可以），支持复制、修改渲染样式等
                 # todo: 监听 esc 键，点击屏幕的返回键
@@ -307,6 +316,8 @@ async def page_get_note(request: Request, note_id: int):
                     def get_content_text():
                         return content.text
 
+            content.style("user-select: text; cursor: text;")
+
             # [step] ai: ui.textarea 最下面的虚线可以隐藏吗？通过设置 autogrow 自动变化，会隐藏 resize 控件
             # todo: relative 是什么？absolute 又是什么？
             # with ui.element("div").classes("w-full relative"):
@@ -337,7 +348,7 @@ async def page_get_note(request: Request, note_id: int):
             with ui.column().classes("w-full mt-6 mb-4"):
                 with ui.row().classes("w-full items-center justify-between"):
                     ui.label("附件").classes("font-medium text-gray-800")
-                    button = ui.button("查阅附件", on_click=partial(see_attachment, note_id=note_id))
+                    button = ui.button("查阅附件", on_click=partial(see_attachment, note_id=note_id, detail_page=True))
                     button.props("flat icon-right=mdi-chevron-right dense").classes("text-blue-600")
 
                 async with AttachmentService() as service:
@@ -556,24 +567,85 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
             title = ui.input(placeholder="输入笔记标题...")
             title.classes("w-full text-lg font-medium placeholder:text-gray-400").props("dense")
 
-            async def ai_generate_title():
-                if not content.value:
-                    ui.notify("正文内容为空，无法生成", type="negative")
-                    return
-                show_loading("正在生成标题...")
-                async with DeepSeekClient() as client:
-                    result = await client.ai_generate_title(content.value)
-                    if result.is_ok():
-                        title.value = result.unwrap()[:100]  # 过长截断
-                    else:
-                        ui.notify(f"ai 生成出错，原因：{result.err()}", type="negative")
-                    hide_loading()
-
             with title.add_slot("append"):
                 with ui.button(icon="menu").classes("text-[10px] -mr-1 -mb-1").props("flat dense color=grey"):
                     with ui.menu():
-                        ai_menu_item = ui.menu_item("ai 生成标题", on_click=ai_generate_title)
-                        ai_menu_item.tooltip("根据正文内容，让 ai 生成合适的标题")
+
+                        async def ai_generate_title():
+                            if not content.value:
+                                ui.notify("正文内容为空，无法生成", type="negative")
+                                return
+                            show_loading("正在生成标题...")
+                            async with DeepSeekClient() as client:
+                                result = await client.ai_generate_title(content.value)
+                                if result.is_ok():
+                                    title.value = result.unwrap()[:100]  # 过长截断
+                                else:
+                                    ui.notify(f"ai 生成出错，原因：{result.err()}", type="negative")
+                                hide_loading()
+
+                        ai_generate = ui.menu_item("ai 生成标题")
+                        ai_generate.tooltip("双击触发：根据正文内容，让 ai 生成合适的标题")
+                        ai_generate.on("dblclick", ai_generate_title)
+
+                        if not is_add_note_page:
+
+                            def show_export_dialog():
+                                """显示导出文件名输入对话框"""
+
+                                async def on_confirm():
+                                    file_name = file_input.value.strip()
+                                    if not file_name:
+                                        return
+                                    if not file_name.endswith('.txt'):
+                                        file_name += '.txt'
+
+                                    # todo: 校验 file_name 格式，要求满足 Windows 和 Linux 的文件格式
+                                    file_content = f"{title.value}\n\n{content.value}"
+                                    logger.debug("filename: {}", file_name)
+                                    logger.debug("len(file_content): {}", len(file_content))
+
+                                    # todo: 自动创建一下如何？
+                                    dynamic_settings.export_dir.mkdir(parents=True, exist_ok=True)
+                                    safe_file_path = dynamic_settings.export_dir / f"{uuid.uuid4()}-{file_name}"
+                                    safe_file_path.write_text(file_content, encoding="utf-8")
+                                    ui.notify(f"导出为：{Path.cwd() / safe_file_path}", type="positive")
+
+                                    # try:
+                                    #     safe_content = json.dumps(file_content)[1:-1]  # 转义
+                                    #     js_code = f'''
+                                    #         console.log(111);
+                                    #         const blob = new Blob(["{safe_content}"], {{ type: "text/plain;charset=utf-8" }});
+                                    #         const url = URL.createObjectURL(blob);
+                                    #         const a = document.createElement("a");
+                                    #         a.href = url;
+                                    #         a.download = "{file_name}";
+                                    #         document.body.appendChild(a);
+                                    #         a.click();
+                                    #         URL.revokeObjectURL(url);
+                                    #         a.remove();
+                                    #     '''
+                                    #     await ui.run_javascript(js_code)
+                                    # except Exception as e:
+                                    #     logger.error(e)
+                                    #     ui.notify(f"错误：{e}", type="negative")
+
+                                    dialog.close()
+
+                                with ui.dialog(value=True) as dialog, ui.card():
+                                    file_input = ui.input(label="文件名", value="导出内容.txt").props('autofocus')
+
+
+
+                                    with ui.row():
+
+                                        ui.button('确定', on_click=on_confirm)
+
+                                        ui.button('取消', on_click=dialog.close)
+                            ui.separator()
+                            export_file = ui.menu_item("导出为文件", auto_close=False, on_click=show_export_dialog)
+                            # ui.separator()
+                            # import_file = ui.menu_item("导入文件", auto_close=False)
 
             content = ui.textarea(placeholder="输入笔记内容...")
             content.classes("w-full mt-4 placeholder:text-gray-400").props("autogrow spellcheck=false")
