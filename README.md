@@ -8,6 +8,7 @@
 - 列表视图支持分页、筛选、排序
 - 笔记详情页，笔记支持 label 和 markdown 格式渲染，label 类似于记事本，markdown 可以渲染基础 markdown 语法
 
+![img.png](images/img.png)
 
 ## 项目结构
 ```txt
