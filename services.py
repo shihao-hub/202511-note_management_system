@@ -157,7 +157,7 @@ class NoteService(Service[Note]):
         search_content = search_filter.get("search_content", None)
         has_attachment = search_filter.get("has_attachment", None)
         note_type = search_filter.get("note_type", None)
-        order_by = search_filter.get("order_by", "-updated_at") # 默认按 updated_at 倒叙排列
+        order_by = search_filter.get("order_by", "-updated_at")  # 默认按 updated_at 倒叙排列
 
         stmt = select(select_field)
 
@@ -340,7 +340,9 @@ class UserConfigService(Service[UserConfig]):
 
     async def get_value(self, key: str) -> Any | None:
         config = await self._get_user_config()
-        return config.profile.get(key)
+        res = config.profile.get(key)
+        logger.debug("[get_value] config.profile[{}]: {}", key, res)
+        return res
 
     async def set_value(self, key: str, value):
         config = await self._get_user_config()

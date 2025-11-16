@@ -150,6 +150,7 @@ class UserConfig(Base):
     def default_user_profile():
         return {
             "note_detail_render_type": NoteDetailRenderTypeEnum.LABEL.value,
+            "note_detail_autogrow": False,
             "page_size": 6
         }
 
