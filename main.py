@@ -10,8 +10,7 @@ load_dotenv(".env")
 
 # pyinstaller（注意 sqlalchemy 搭配 alembic 的主动迁移命令，导致打包后出错，需要考虑如何解决，虽然复制一个无数据 db 即可解决）
 try:
-    import sys
-
+    import tkinter
     import addict
     import aiosqlite
     import loguru
@@ -21,6 +20,7 @@ try:
     import fastapi
     import jinja2
 
+    import sys
     is_packed = getattr(sys, "frozen", False)
 except ImportError as exception:
     logger.error(exception)
