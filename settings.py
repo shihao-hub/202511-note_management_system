@@ -4,14 +4,21 @@ from typing import Type, Any, Tuple, Dict
 
 from lupa.lua51 import LuaRuntime
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, JsonConfigSettingsSource, SettingsConfigDict
+from pydantic import field_validator
 from pydantic.fields import FieldInfo
 from jinja2 import Environment, FileSystemLoader
+from loguru import logger
 
 # todo: 不要从 settings.py 读，从数据库读，或者说再新增一张表，用来管理配置文件（od python）
 # PAGE_SIZE = 6
 
 # 设置 jinja2 模板目录
 ENV = Environment(loader=FileSystemLoader("./templates"))
+VUE_COMPATIBLE_ENV = Environment(
+    loader=FileSystemLoader("templates"),
+    variable_start_string="[[",
+    variable_end_string="]]"
+)
 
 
 # region - template
@@ -76,6 +83,31 @@ class DynamicSettings(BaseSettings):
             file_secret_settings,
         )
 
+    @field_validator("export_dir", mode="before")
+    @classmethod
+    def validate_export_dir(cls, value: str):
+        value = value.strip()
+
+        # 1. 禁止显式包含 . 或 .. 作为路径组件（简单防御）
+        parts = Path(value).parts
+        logger.debug("parts: {}", parts)
+        if any(part in (".", "..") for part in parts):
+            raise ValueError("路径中不能包含 '.' 或 '..'")
+
+        # 2. 转为绝对路径并解析
+
+        cwd = Path.cwd().resolve()
+        resolved = (cwd / value).resolve()
+        logger.debug("resolved: {}", resolved)
+
+        # 3. 确保最终路径在 cwd 内部（沙箱检查）
+        try:
+            resolved.relative_to(cwd)
+        except ValueError as e:
+            raise ValueError(f"路径必须位于当前工作目录下: {cwd}") from e
+
+        return resolved
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -88,6 +120,7 @@ class DynamicSettings(BaseSettings):
     title: str
     host: str
     version: str
+    export_dir: Path
 
 
 @functools.lru_cache()

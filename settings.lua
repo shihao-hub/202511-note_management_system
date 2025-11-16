@@ -10,4 +10,7 @@ config.intruction_content = [[
 快捷键：
     ctrl+s: 编辑笔记和保存笔记页面用于快捷保存
     ctrl+v: 笔记正文输入框用于粘贴文本和上传文件
+笔记详情：
+    markdown 渲染模式下，点击链接，将自动打开默认浏览器
 ]]
+config.export_dir = "exports" -- 文件导出目录（相对目录，根目录为 .exe 所在目录）
