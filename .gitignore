@@ -8,7 +8,12 @@ wheels/
 
 # Virtual environments
 .venv
+.env
+
 dist_dependencies
 dist_v1
+
+*.log
+*.spec
 notes.db
-.env
+notes.db.bak.*
