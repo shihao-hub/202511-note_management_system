@@ -3,7 +3,7 @@ import math
 import uuid
 from functools import partial
 from pathlib import Path
-from typing import Tuple, Dict
+from typing import Tuple, Dict, List
 
 import pyperclip
 from nicegui import ui
@@ -12,7 +12,10 @@ from fastapi.requests import Request
 from loguru import logger
 
 from models import Note, Attachment, NoteDetailRenderTypeEnum, NoteTypeMaskedEnum
-from utils import DeepSeekClient, RateLimiter, refresh_page, build_footer, build_softmenu, show_config_dialog
+from utils import (
+    DeepSeekClient, RateLimiter, refresh_page,
+    build_footer, build_softmenu, show_config_dialog, is_valid_filename
+)
 from services import NoteService, AttachmentService, UserConfigService
 from settings import dynamic_settings, ENV
 
@@ -144,6 +147,45 @@ async def see_attachment(note_id: int, detail_page: bool = False):
                     main_title = ui.label(attachment.filename).classes("max-w-48 truncate text-ellipsis")
                     main_title.tooltip(attachment.filename)
 
+                    if not detail_page:
+                        async def modify_attchment_filename():
+                            async def on_confirm_click():
+                                if not new_filename.value:
+                                    ui.notify("请输入新文件名", type="warning")
+                                    return
+                                if new_filename.value == main_title.text:
+                                    ui.notify("新文件名和旧文件名不能相同", type="warning")
+                                    return
+                                filename = new_filename.value.strip()
+                                check_result = is_valid_filename(filename)
+                                if check_result.is_err():
+                                    ui.notify(f"修改失败，原因：{check_result.err()}", type="negative")
+                                    return
+                                async with AttachmentService() as service:
+                                    result = await service.update(attachment.id, filename=filename)
+                                    if result.is_err():
+                                        ui.notify(f"错误：{result.err()}", type="negative")
+                                    else:
+                                        ui.notify("修改附件文件名成功！", type="positive")
+                                        dialog.close()
+                                        main_title.text = filename
+
+                            with ui.dialog() as dialog, ui.card():
+                                with ui.column().classes("pt-4 w-full"):  # border-2 border-dashed
+                                    with ui.row().classes("w-full flex items-center justify-between"):
+                                        ui.label("新文件名")
+                                        new_filename = ui.input(placeholder="输入新文件名")
+                                        new_filename.props("dense outlined autofocus")
+                                        new_filename.on("keydown.enter", lambda: on_confirm_click())
+                                    with ui.row().classes("w-full flex items-center justify-end"):
+                                        confirm = ui.button("确定", on_click=on_confirm_click)
+                                        confirm.props("unelevated color=primary")
+
+                            dialog.open()
+
+                        main_title.classes("cursor-pointer")
+                        main_title.on("click", modify_attchment_filename)
+
                     sub_title_content = f"{attachment.size}b · {attachment.mimetype}"
                     sub_title = ui.label(sub_title_content)
                     sub_title.classes("max-w-32 truncate text-ellipsis text-gray-500 text-xs")
@@ -177,9 +219,10 @@ async def see_attachment(note_id: int, detail_page: bool = False):
                     delete = ui.button(icon="mdi-trash-can-outline")
                     delete.props("flat dense").classes("text-red")
                     if detail_page:
-                        delete.disable() # disable() 会自动添加禁用样式（置灰）并阻止点击事件
-                    delete.on("dblclick", on_delete)
-                    delete.tooltip("双击删除")
+                        delete.disable()  # disable() 会自动添加禁用样式（置灰）并阻止点击事件
+                    else:
+                        delete.on("dblclick", on_delete)
+                        delete.tooltip("双击删除")
 
                 # todo: 此处可以存放一个隐藏组件，用于展开查看文件内容（只支持预览图片）
         return card
@@ -216,6 +259,13 @@ async def see_attachment(note_id: int, detail_page: bool = False):
     dialog.open()
 
 
+def register_find_button_and_click(pressed_key: str, button_id: str):
+    ui.add_head_html("<script>{0}</script>".format(ENV.get_template("find_button_and_click.js").render({
+        "button_id": button_id,
+        "pressed_key": pressed_key,
+    })))
+
+
 @ui.page("/get_note", title="笔记详情")
 async def page_get_note(request: Request, note_id: int):
     # [question] 新增 page 导致点击时页面需要刷新，有没有更流畅的办法呢？有的，定义一个 div，然后通过调用 clear 方法，重新构建 div
@@ -229,9 +279,11 @@ async def page_get_note(request: Request, note_id: int):
 
     async with UserConfigService() as service:
         render_type = await service.get_value("note_detail_render_type")
+        autogrow = await service.get_value("note_detail_autogrow")
 
     # render_type = NoteDetailRenderTypeEnum.MARKDOWN.value
     logger.debug("render_type: {}", render_type)
+    logger.debug("autogrow: {}", autogrow)
 
     async with NoteService() as service:
         result = await service.get(note_id)
@@ -241,18 +293,22 @@ async def page_get_note(request: Request, note_id: int):
 
     with ui.column().classes("w-full mx-auto px-4 sm:px-6 md:px-8 max-w-7xl py-6"):
         with ui.row().classes("w-full items-center gap-x-3 mb-6"):
-            button = ui.button(icon="mdi-arrow-left", on_click=go_main)
-            button.props("flat round").classes("text-gray-700 hover:bg-gray-100")
+            arrow_left_btn = ui.button(icon="mdi-arrow-left", on_click=go_main)
+            arrow_left_btn.props("flat round").classes("text-gray-700 hover:bg-gray-100")
             ui.label("笔记详情").classes("text-xl font-bold text-gray-900")
+
+            register_find_button_and_click("Escape", arrow_left_btn.id)
 
         card = ui.card().classes("w-full rounded-xl shadow-md border border-gray-200 overflow-hidden")
         with card, ui.column().classes("w-full px-5 py-6"):
             # 标题行
-            with ui.row().classes("w-full items-center justify-between mb-4"):
+            with ui.row().classes("w-full items-center justify-between mb-4 flex-nowrap"):
                 title = ui.label(note.title).classes("text-gray-900 font-bold text-2xl leading-tight")
                 # todo: 能否设置都能选中复制？好痛苦，浏览器真是个伟大的技术发明，多年的迭代，真复杂啊
                 # [textarea readonly 情况下，无法选中复制，label 也是](https://lxblog.com/qianwen/share?shareId=b5a8b90e-bef0-4605-8921-05de37afd4bd)
                 title.style("user-select: text; cursor: text;")
+                title.classes("truncate flex-shrink min-w-0")  # 允许收缩到小于内容宽度
+                title.tooltip(note.title)
 
                 # todo: copy_btn 改为 menu（选项弹窗也可以），支持复制、修改渲染样式等
                 # todo: 监听 esc 键，点击屏幕的返回键
@@ -271,8 +327,14 @@ async def page_get_note(request: Request, note_id: int):
                         # copy_btn.classes("text-[10px]").props("flat dense color=grey")
                         # copy_btn.on("click", partial(copy_note, text=f"{title.text}\n\n{get_content_text()}"))
                         # copy_btn.tooltip("复制标题和正文")
+
+                        # todo: 抽成函数
+                        # todo: select 和 profile 这个语法还是太乱了，还是需要入门前端才行
+                        #       任何一门技术还得是专精方向学习才行，虽然有些工具也有部分能力，但是还是太窄了
+
+                        logger.debug("render_type: {}, autogrow: {}", render_type, autogrow)
                         with ui.row().classes("w-full flex items-center justify-between"):
-                            ui.label("渲染模式：")
+                            ui.label("渲染模式：").tooltip("笔记正文的渲染模式")
 
                             async def on_change(e: ValueChangeEventArguments):
                                 if e.value == render_type:
@@ -282,14 +344,35 @@ async def page_get_note(request: Request, note_id: int):
                                 dialog.close()
                                 await refresh_page()
 
-                            ui.select(NoteDetailRenderTypeEnum.values(), value=render_type, on_change=on_change)
+                            ui.select(NoteDetailRenderTypeEnum.values(), value=render_type,
+                                      on_change=on_change).classes("flex-grow")
+
+                        with ui.row().classes("w-full flex items-center justify-between"):
+                            ui.label("自动增长：").tooltip("笔记正文是否自动伸长")
+
+                            async def on_autogrow_change(e: ValueChangeEventArguments):
+                                if e.value == autogrow:
+                                    return
+                                async with UserConfigService() as service_:
+                                    await service_.set_value("note_detail_autogrow", e.value)
+                                dialog.close()
+                                await refresh_page()
+
+                            ui.select({True: "是", False: "否"}, value=autogrow, on_change=on_autogrow_change).classes(
+                                "flex-grow")
+
                     dialog.open()
 
                 menu_btn = ui.button(icon="menu", on_click=show_option_dialog)
                 menu_btn.classes("text-[12px]").props("flat dense color=grey")
+                menu_btn.classes("flex-shrink-0")  # 禁止收缩
 
             # 内容文本区
-            content_container = ui.element("div").classes("w-full max-h-64 overflow-y-auto ")  # 64 好，可以显示编辑按钮
+            content_container = ui.element("div").classes("w-full ")
+            if not autogrow:
+                content_container.classes("max-h-64 overflow-y-auto ")  # 64 好，可以显示编辑按钮
+            else:
+                pass
 
             with content_container:
                 if render_type == NoteDetailRenderTypeEnum.MARKDOWN.value:
@@ -555,8 +638,9 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                     go_get_note(note_id)
                 # go_main()
 
-            return_btn = ui.button(icon="mdi-arrow-left", on_click=on_click)
-            return_btn.props("flat round").classes("text-gray-700 hover:bg-gray-100")
+            arrow_left_btn = ui.button(icon="mdi-arrow-left", on_click=on_click)
+            arrow_left_btn.props("flat round").classes("text-gray-700 hover:bg-gray-100")
+            register_find_button_and_click("Escape", arrow_left_btn.id)
             if is_add_note_page:
                 ui.label("新增笔记").classes("text-xl font-bold text-gray-900")
             else:
@@ -635,20 +719,19 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                                 with ui.dialog(value=True) as dialog, ui.card():
                                     file_input = ui.input(label="文件名", value="导出内容.txt").props('autofocus')
 
-
-
                                     with ui.row():
-
                                         ui.button('确定', on_click=on_confirm)
 
                                         ui.button('取消', on_click=dialog.close)
+
                             ui.separator()
                             export_file = ui.menu_item("导出为文件", auto_close=False, on_click=show_export_dialog)
                             # ui.separator()
                             # import_file = ui.menu_item("导入文件", auto_close=False)
 
             content = ui.textarea(placeholder="输入笔记内容...")
-            content.classes("w-full mt-4 placeholder:text-gray-400").props("autogrow spellcheck=false")
+            content.classes("w-full mt-4 placeholder:text-gray-400").props("spellcheck=false")  # autogrow
+            content.props("rows=10")  # 内部文本区域的高度
 
             # [2025-11-13] 本来放在最下面的，导致数据显示有延迟，不可以放在最下面
             # todo: 将数据获取和前端渲染分离开
