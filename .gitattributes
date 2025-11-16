@@ -1,0 +1,4 @@
+docs/** linguist-vendored
+fonts** linguist-vendored
+static** linguist-vendored
+tools** linguist-vendored
