@@ -7,6 +7,8 @@ document.addEventListener("click", function (e) {
     }
     if (el && el.href) {
         e.preventDefault();
+        // todo: 能不能通知后端，让后端去打开？
+        // https://lxblog.com/qianwen/share?shareId=bb75620a-9e8f-4856-b8c4-00cda079a713
         fetch("/open-external-link?url=" + encodeURIComponent(el.href))
             .catch(err => console.error("Failed to open link:", err));
     }
