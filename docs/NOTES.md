@@ -37,6 +37,14 @@
 优化项：
 1. 
 
+## 杂项
+
+#### 项目readme.md 文件一般存放什么
+
+[参考链接](https://lxblog.com/qianwen/share?shareId=9a0fb5f0-11b3-456e-9bf3-eedd48e2340d)
+
+
+
 #### 数据库存储时区
 
 使用 SQLAlchemy-Utc 库：`from sqlalchemy_utc import UtcDateTime, utcnow`

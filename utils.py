@@ -226,15 +226,25 @@ class DeepSeekClient:
     def __init__(self, model: str = "deepseek-chat"):
         self.model = model
 
-        self.api_key = os.environ.get("DEEPSEEK_API_KEY")
+        # 使用懒加载，避免项目无法启动
+        self._api_key: str | None = None
+        self._client: AsyncOpenAI | None = None
 
-        if not self.api_key:
-            raise ValueError("API key must be provided via argument or DEEPSEEK_API_KEY environment variable.")
+    @property
+    def api_key(self):
+        if self._api_key is None:
+            self._api_key = os.environ.get("DEEPSEEK_API_KEY")
+            if not self._api_key:
+                raise ValueError("API key must be provided via argument or DEEPSEEK_API_KEY environment variable.")
+        return self._api_key
 
-        self.client: AsyncOpenAI | None = None
+    @property
+    def client(self):
+        if self._client is None:
+            self._client = AsyncOpenAI(api_key=self.api_key, base_url="https://api.deepseek.com")
+        return self._client
 
     async def __aenter__(self) -> "DeepSeekClient":
-        self.client = AsyncOpenAI(api_key=self.api_key, base_url="https://api.deepseek.com")
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
@@ -415,7 +425,7 @@ async def show_config_dialog(config_infos: Dict[str, ConfigInfoTypedDict], persi
 
                 # Shadows name 'select' from outer scope，但是其实只要没有用 nonlocal 等关键字，就不用担心！
                 select = ui.select(info["options"], value=info["default"],
-                                    on_change=partial(on_change, info["option_name"]))
+                                   on_change=partial(on_change, info["option_name"]))
                 select.classes("col-span-2").props('input-style="text-align: center;"')
 
             async def on_confirm_click():

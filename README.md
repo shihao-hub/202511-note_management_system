@@ -17,6 +17,25 @@
 └── README.md
 ```
 
+## 安装指南
+
+访问 [uv 中文文档](https://uv.doczh.com/getting-started/installation/) 下载 uv
+
+打开当前项目根目录，执行：
+```bash
+uv init # 初始化项目
+uv venv .venv # 创建虚拟环境
+uv sync # 下载依赖库
+uv run ./main.py --native # 运行项目
+```
+
+注意事项：
+- ai 生成标题功能调用了 deepseek api，需要在根目录下创建 .env 文件，填充 DEEPSEEK_API_KEY 字段
+
+
+
+
+
 ## 开发感想
 
 本项目源于个人需求，旨在锻炼普通的全栈开发能力，包括：
