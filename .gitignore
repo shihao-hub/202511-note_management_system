@@ -9,6 +9,7 @@ wheels/
 # Virtual environments
 .venv
 .env
+.idea
 
 dist_dependencies
 dist_v1
