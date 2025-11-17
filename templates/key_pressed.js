@@ -78,6 +78,28 @@ document.addEventListener("DOMContentLoaded", function () {
 
         }
 
+        if (e.key === 'End' && e.target.tagName === 'TEXTAREA') {
+            // console.log(e.target)
+            e.preventDefault();
+
+            // generate by ai: https://lxblog.com/qianwen/share?shareId=1f1ee862-4ed8-410b-9122-636c462c35a8
+
+            // 将光标移到整个文本末尾
+            const el = e.target;
+            const len = el.value.length;
+
+            el.setSelectionRange(len, len);
+
+
+            // 滚动到底部
+
+            setTimeout(() => {
+
+                el.scrollTop = el.scrollHeight;
+
+            }, 0);
+        }
+
     });
 })
 

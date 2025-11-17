@@ -39,6 +39,16 @@
 
 ## 杂项
 
+
+
+#### 思考 A
+
+开发阶段，始终思考，假如我把我正在使用的程序 db 复制到现在的程序中，会发生什么？这不就好测试了！而且这也证明了，一个 db 作文件系统的好处！一个 db + 一个 settings.json/ini/lua 等动态文件！
+
+
+
+
+
 #### 项目readme.md 文件一般存放什么
 
 [参考链接](https://lxblog.com/qianwen/share?shareId=9a0fb5f0-11b3-456e-9bf3-eedd48e2340d)
@@ -56,7 +66,7 @@ dev lib: pyinstaller pillow pywebview
 ```bash
 nicegui-pack --onefile --windowed --icon "icon.png" --name "笔记管理系统v1.0.0" main.py
 
-nicegui-pack --windowed --icon "icon.png" --name "笔记管理系统v1.1.2" main.py
+nicegui-pack --windowed --icon "icon.png" --name "笔记管理系统v1.1.3" main.py
 ```
 
 #### nicegui 实现拖拽上传
@@ -89,7 +99,8 @@ nicegui-pack --windowed --icon "icon.png" --name "笔记管理系统v1.1.2" main
 
 ## 目录结构
 
-``txt
+```txt
+```
 
 .gitignore
 .python-version
@@ -113,4 +124,4 @@ utils.py
 
 main.py
 
-``
+```

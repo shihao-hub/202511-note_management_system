@@ -1,8 +1,8 @@
 import functools
 from pathlib import Path
-from typing import Type, Any, Tuple, Dict
+from typing import Type, Any, Tuple, Dict, List, Union
 
-from lupa.lua51 import LuaRuntime
+from lupa.lua51 import LuaRuntime, lua_type
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, JsonConfigSettingsSource, SettingsConfigDict
 from pydantic import field_validator
 from pydantic.fields import FieldInfo
@@ -38,13 +38,41 @@ class LuaConfigSettingsSource(PydanticBaseSettingsSource):
             return config_dict[field_name], field_name, True
         return None, field_name, False
 
+    def _lua_table_to_python(self, lua, obj: Any) -> Union[Dict, List, Any]:
+        """
+
+        递归将 Lupa 的 LuaTable 转换为 Python 的 dict 或 list。
+        - 如果 Lua 表是连续整数索引（1-based），视为 list。
+        - 否则视为 dict。
+
+        当前函数主要逻辑由 ai 生成
+
+        """
+
+        # 判断是否是 Lua 表：检查是否有 .items() 方法（这是 LuaTable 的特征）
+        if hasattr(obj, 'items') and hasattr(obj, 'keys') and not isinstance(obj, (dict, list)):
+            # 检查是否为数组式表（1,2,3,... 连续整数键）
+            length = len(obj)
+            if length > 0:
+                # 尝试判断是否为纯数组：所有键为 1..length 的整数
+                is_array = all(
+                    isinstance(k, int) and 1 <= k <= length
+                    for k in obj.keys()
+                )
+                if is_array:
+                    return [self._lua_table_to_python(lua, obj[i]) for i in range(1, length + 1)]
+            return {k: self._lua_table_to_python(lua, v) for k, v in obj.items()}
+
+        # 其他类型（number, string, bool, None）直接返回
+        return obj
+
     def _load_lua_config(self) -> Dict:
         lua = LuaRuntime()
         with open(self.lua_file, "r", encoding=self.lua_file_encoding) as f:
             lua_code = f.read()
         lua.execute(lua_code)
-        # [note] dict 不是通用的，userdata、thread 等类型是无法转换成功的，但是我现在只将 lua 文件充当 json 使用，并不需要考虑这么多
-        return dict(lua.globals()["config"])
+        config_table = lua.globals()["config"]
+        return self._lua_table_to_python(lua, config_table)
 
     def __call__(self) -> Dict[str, Any]:
         return self._load_lua_config()
@@ -108,6 +136,7 @@ class DynamicSettings(BaseSettings):
 
         return resolved
 
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -121,6 +150,7 @@ class DynamicSettings(BaseSettings):
     host: str
     version: str
     export_dir: Path
+    prefix_import_values: List[str]
 
 
 @functools.lru_cache()

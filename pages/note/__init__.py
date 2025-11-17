@@ -1,9 +1,11 @@
 import json
 import math
+import os
+import traceback
 import uuid
 from functools import partial
 from pathlib import Path
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, List, Literal
 
 import pyperclip
 from nicegui import ui
@@ -14,9 +16,11 @@ from loguru import logger
 from models import Note, Attachment, NoteDetailRenderTypeEnum, NoteTypeMaskedEnum
 from utils import (
     DeepSeekClient, RateLimiter, refresh_page,
-    build_footer, build_softmenu, show_config_dialog, is_valid_filename
+    build_footer, build_softmenu, show_config_dialog, is_valid_filename,
+    register_find_button_and_click, extract_urls, LoadingOverlay
 )
 from services import NoteService, AttachmentService, UserConfigService
+from views import View, Controller, delete_note
 from settings import dynamic_settings, ENV
 
 
@@ -28,93 +32,157 @@ from settings import dynamic_settings, ENV
 
 # [knowledge] [Rust 的 Result 类型详解](https://lxblog.com/qianwen/share?shareId=c6059ca1-51c6-4424-876d-6e2019bfb925)
 
-def build_header() -> ui.header:
-    # [step] 使用 ui.icon 找到的图标不生效，发现需要导入
-    # <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
-    # <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    ui.add_head_html("""
-    <link rel="stylesheet" href="/static/materialdesignicons.min.css" />
-    """)
+class HeaderController(Controller["HeaderView"]):
+    async def show_link_collection(self):
+        dialog = ui.dialog().props("persistent")
+        with dialog, ui.card().classes("pb-2"):
+            # [step] ai answer: 右上角关闭按钮（用绝对定位）
+            # [question] 绝对布局到底咋布局的？
+            # [do] 当前 dialog 的布局我看起来还可以接受
+            with ui.row().classes("w-full flex justify-end items-center pr-4"):
+                close = ui.icon("close").classes("cursor-pointer text-blue text-lg")
+                # close.classes("absolute top-2 right-2")
+                close.classes("cursor-pointer rounded-lg hover:bg-gray-200 ")
+                close.on("click", dialog.close)
+                # close = ui.button(icon="close", on_click=dialog.close)
+                # close.props("flat ").classes("absolute top-2 right-2")
 
-    list_btn_active = ui.context.client.page.path == "/"
-    # todo: 暂时无法区分 新增和编辑，未来显然应该拆分 page，本来就耦合严重
-    create_btn_active = ui.context.client.page.path == "/add_or_edit_note"
+            # 该结构参考石墨文档的插入超链接的选项，虽然石墨文档的页面更舒服
+            # todo: 桌面组件建议可以参看石墨文档（或者其他软件）看看它们是如何组织组件的、如何利用空间的
+            #       哈哈，比如上传附件，限制 10MB，我的项目也可以限制 10MB
+            with ui.grid(columns=4).classes("items-center"):
+                ui.label("文本").classes("text-center col-span-1")
+                text = ui.input(placeholder="输入文本").props("dense").classes("col-span-3")
 
-    # [css note] bg-white 背景白色，shadow-sm 加一个微妙的阴影，header 看起来浮在内容上方，自然形成边界
-    with ui.header().classes("bg-white shadow-sm py-3") as header:
-        with ui.row().classes("w-full mx-auto max-w-7xl flex justify-between items-center px-4 sm:px-6 md:px-8"):
-            with ui.row().classes("items-center gap-x-1"):
-                # ui.icon(name="mdi-note", size="28px").classes("text-blue-600")
-                build_softmenu()
+                # text.classes("cursor-pointer")
+                # text.on("dblclick", lambda: None)
+                # text.tooltip("双击触发：根据链接内容，让 ai 生成合适的文本")
 
-                ui.label("笔记管理系统").classes("text-xl font-bold text-gray-800")
+                link_label = ui.label("链接").classes("text-center col-span-1")
+                link_label.tooltip("可以输入长文本，保存时会自动提取所有链接")
+                # todo: 多链接怎么办？多链接那不是这个功能的事！
+                link = ui.input(placeholder="输入链接").props("dense").classes("col-span-3")
 
-            # 占位符（保持右侧对齐）
-            ui.space()
+                ui.space().classes("col-span-3")
 
-            with ui.row().classes("flex justify-between items-center"):
-                # placeholder
+                async def on_enter():
+                    await on_confirm_click()
 
-                with ui.row().classes("gap-x-2"):
-                    list_btn = ui.button("列表视图", on_click=go_main, icon="mdi-format-list-bulleted")
-                    list_btn.props("unelevated flat dense")
-                    list_btn.classes(
-                        "text-sm font-medium text-gray-700 "
-                        "bg-gray-100 hover:bg-gray-200 "
-                        "px-3 py-1.5 rounded-lg"
-                    )
-                    # [question] 测试发现，bg-black bg-blue 能生效，带数字却不生效，而 bg-gray-200 带数字却生效
-                    create_btn = ui.button("新建笔记", on_click=go_add_note, icon="mdi-square-edit-outline")
-                    create_btn.props("unelevated flat dense")
-                    create_btn.classes(
-                        "text-sm font-medium text-gray-700 "
-                        "bg-gray-100 hover:bg-gray-200 "
-                        "px-3 py-1.5 rounded-lg"
-                    )
-                    # [step] ai: nicegui ui.menu 能不能实现右键点击的时候才显示
-                    with create_btn, ui.context_menu():
-                        async def show_link_collection():
-                            dialog = ui.dialog().props("persistent")
-                            with dialog, ui.card().classes("pb-2"):
-                                # [step] ai answer: 右上角关闭按钮（用绝对定位）
-                                # [question] 绝对布局到底咋布局的？
-                                # [do] 当前 dialog 的布局我看起来还可以接受
-                                with ui.row().classes("w-full flex justify-end items-center pr-4"):
-                                    close = ui.icon("close").classes("cursor-pointer text-blue text-lg")
-                                    # close.classes("absolute top-2 right-2")
-                                    close.classes("cursor-pointer rounded-lg hover:bg-gray-200 ")
-                                    close.on("click", dialog.close)
-                                    # close = ui.button(icon="close", on_click=dialog.close)
-                                    # close.props("flat ").classes("absolute top-2 right-2")
+                text.on("keydown.enter", on_enter)
+                link.on("keydown.enter", on_enter)
 
-                                # 该结构参考石墨文档的插入超链接的选项，虽然石墨文档的页面更舒服
-                                # todo: 桌面组件建议可以参看石墨文档（或者其他软件）看看它们是如何组织组件的、如何利用空间的
-                                #       哈哈，比如上传附件，限制 10MB，我的项目也可以限制 10MB
-                                with ui.grid(columns=4).classes("items-center"):
-                                    ui.label("文本").classes("text-center col-span-1")
-                                    text = ui.input(placeholder="输入文本").props("dense").classes("col-span-3")
+                async def on_confirm_click():
+                    if not text.value or text.value.strip() == "":
+                        ui.notify(f"文本不能为空", type="warning")
+                        return
+                    if not link.value:
+                        ui.notify(f"链接不能为空", type="warning")
+                        return
 
-                                    ui.label("链接").classes("text-center col-span-1")
-                                    link = ui.input(placeholder="输入链接").props("dense").classes("col-span-3")
+                    # 提取 link 中的链接
+                    urls = extract_urls(link.value)
+                    if not urls:
+                        ui.notify(f"未提取到有效链接，请重新输入", type="negative")
+                        link.value = ""
+                        return
 
-                                    ui.space().classes("col-span-3")
+                    for i, url in enumerate(urls):
+                        urls[i] = f"{i + 1}. {url}"
 
-                                    async def on_confirm_click():
-                                        dialog.close()
+                    async with NoteService() as note:
+                        result = await note.create(**dict(
+                            title=text.value,
+                            content="\n".join(urls),
+                            note_type=NoteTypeMaskedEnum.HYPERLINK
+                        ))
+                        if result.is_err():
+                            ui.notify(f"错误，原因：{result.err()}", type="negative")
+                        else:
+                            ui.notify("新建超链接成功", type="positive")
 
-                                    ui.button("确定", on_click=on_confirm_click).classes("col-span-1").props("flat")
+                            async def delay():
+                                dialog.close()
+                                await refresh_page()
 
-                            dialog.open()
+                            ui.timer(0.5, delay, once=True)
 
-                        # todo: 列表视图添加筛选，Note 表也要新增笔记类型，默认筛选的是 default 类型，其他类型都是不支持筛选的
-                        ui.menu_item("新建超链接", auto_close=False, on_click=show_link_collection)
+                with ui.button("确定", on_click=on_confirm_click).classes("col-span-1").props("flat"):
+                    with ui.context_menu():
+                        async def on_click():
+                            self.view.loading_overlay.show()
+                            try:
+                                async with DeepSeekClient() as client:
+                                    result = await client.ai_generate_text(link.value)
+                                    if result.is_err():
+                                        ui.notify(f"生成失败，原因：{result.err()}", type="negative")
+                                    else:
+                                        ui.notify(f"生成文本成功！", type="positive")
+                                        text.value = result.value
+                            except Exception as e:
+                                logger.error(e)
+                            self.view.loading_overlay.hide()
 
-                    if list_btn_active:
-                        list_btn.classes("bg-gray-200")
-                    if create_btn_active:
-                        create_btn.classes("bg-gray-200")
+                        ui.menu_item("ai 生成文本", on_click=on_click)
 
-    return header
+        dialog.open()
+
+
+class HeaderView(View["HeaderController"]):
+    controller_class = HeaderController
+
+    async def _initialize(self):
+        self.list_btn_active = ui.context.client.page.path == "/"
+        self.create_btn_active = ui.context.client.page.path == "/add_or_edit_note"
+
+        self.loading_overlay = LoadingOverlay()
+
+        # [step] 使用 ui.icon 找到的图标不生效，发现需要导入
+        # <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@mdi/font@7.4.47/css/materialdesignicons.min.css" />
+        # <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+        ui.add_head_html("""
+        <link rel="stylesheet" href="/static/materialdesignicons.min.css" />
+        """)
+
+        # [css note] bg-white 背景白色，shadow-sm 加一个微妙的阴影，header 看起来浮在内容上方，自然形成边界
+        with ui.header().classes("bg-white shadow-sm py-3") as header:
+            with ui.row().classes("w-full mx-auto max-w-7xl flex justify-between items-center px-4 sm:px-6 md:px-8"):
+                with ui.row().classes("items-center gap-x-1"):
+                    build_softmenu()
+                    ui.label("笔记管理系统").classes("text-xl font-bold text-gray-800")
+
+                ui.space()
+
+                with ui.row().classes("flex justify-between items-center"):
+                    with ui.row().classes("gap-x-2"):
+                        list_btn = ui.button("列表视图", on_click=go_main, icon="mdi-format-list-bulleted")
+                        list_btn.props("unelevated flat dense")
+                        list_btn.classes(
+                            "text-sm font-medium text-gray-700 "
+                            "bg-gray-100 hover:bg-gray-200 "
+                            "px-3 py-1.5 rounded-lg"
+                        )
+                        # [question] 测试发现，bg-black bg-blue 能生效，带数字却不生效，而 bg-gray-200 带数字却生效
+                        create_btn = ui.button("新建笔记", on_click=go_add_note, icon="mdi-square-edit-outline")
+                        create_btn.props("unelevated flat dense")
+                        create_btn.classes(
+                            "text-sm font-medium text-gray-700 "
+                            "bg-gray-100 hover:bg-gray-200 "
+                            "px-3 py-1.5 rounded-lg"
+                        )
+
+                        with list_btn, ui.context_menu():
+                            ui.menu_item("标题视图", auto_close=False)
+
+                        # [step] ai: nicegui ui.menu 能不能实现右键点击的时候才显示
+                        with create_btn, ui.context_menu():
+                            # todo: 列表视图添加筛选，Note 表也要新增笔记类型，默认筛选的是 default 类型，其他类型都是不支持筛选的
+                            ui.menu_item("新建超链接", auto_close=False,
+                                         on_click=self.controller.show_link_collection)
+
+                        if self.list_btn_active:
+                            list_btn.classes("bg-gray-200")
+                        if self.create_btn_active:
+                            create_btn.classes("bg-gray-200")
 
 
 def go_main():
@@ -125,12 +193,18 @@ def go_add_note():
     ui.navigate.to(f"/add_or_edit_note?temporary_uuid={uuid.uuid4()}")
 
 
-def go_edit_note(note_id: int):
-    ui.navigate.to(f"/add_or_edit_note?note_id={note_id}&temporary_uuid={uuid.uuid4()}")
+def go_edit_note(note_id: int, source: str = None):
+    url = f"/add_or_edit_note?note_id={note_id}&temporary_uuid={uuid.uuid4()}"
+    if source:
+        url += f"&source={source}"
+    ui.navigate.to(url)
 
 
-def go_get_note(note_id: int):
-    ui.navigate.to(f"/get_note?note_id={note_id}")
+def go_get_note(note_id: int, notify_from: Literal["add_note"] | None = None):
+    url = f"/get_note?note_id={note_id}"
+    if notify_from:
+        url = url + "&notify_from=" + notify_from
+    ui.navigate.to(url)
 
 
 async def see_attachment(note_id: int, detail_page: bool = False):
@@ -157,11 +231,18 @@ async def see_attachment(note_id: int, detail_page: bool = False):
                                     ui.notify("新文件名和旧文件名不能相同", type="warning")
                                     return
                                 filename = new_filename.value.strip()
+                                # 获得旧文件名后缀
                                 check_result = is_valid_filename(filename)
                                 if check_result.is_err():
                                     ui.notify(f"修改失败，原因：{check_result.err()}", type="negative")
                                     return
                                 async with AttachmentService() as service:
+                                    old_filename = attachment.filename
+                                    ext = os.path.splitext(old_filename)[1]
+                                    if ext:
+                                        filename = filename + ext
+                                    logger.debug("ext: {}", ext)
+                                    logger.debug("filename: {}", filename)
                                     result = await service.update(attachment.id, filename=filename)
                                     if result.is_err():
                                         ui.notify(f"错误：{result.err()}", type="negative")
@@ -227,7 +308,7 @@ async def see_attachment(note_id: int, detail_page: bool = False):
                 # todo: 此处可以存放一个隐藏组件，用于展开查看文件内容（只支持预览图片）
         return card
 
-    # ====== ui ====== #                
+    # ====== ui ====== #
     with ui.dialog() as dialog, ui.card():
         with ui.row().classes("w-full flex items-center justify-between"):
             ui.label("附件列表")
@@ -259,19 +340,16 @@ async def see_attachment(note_id: int, detail_page: bool = False):
     dialog.open()
 
 
-def register_find_button_and_click(pressed_key: str, button_id: str):
-    ui.add_head_html("<script>{0}</script>".format(ENV.get_template("find_button_and_click.js").render({
-        "button_id": button_id,
-        "pressed_key": pressed_key,
-    })))
-
-
 @ui.page("/get_note", title="笔记详情")
-async def page_get_note(request: Request, note_id: int):
+async def page_get_note(request: Request, note_id: int, notify_from: str = None):
     # [question] 新增 page 导致点击时页面需要刷新，有没有更流畅的办法呢？有的，定义一个 div，然后通过调用 clear 方法，重新构建 div
 
-    build_header()
-    build_footer()
+    await HeaderView.create()
+    await build_footer()
+
+    # if notify_from == "add_note":
+    #     # timer 会在页面加载完毕后才开始计时
+    #     ui.timer(0, lambda: ui.notify("保存笔记成功！", type="positive"), once=True)
 
     def copy_note(text):
         pyperclip.copy(text)
@@ -446,58 +524,31 @@ async def page_get_note(request: Request, note_id: int):
 
                 with ui.row().classes("items-center gap-x-2"):
                     edit_on_click = partial(go_edit_note, note_id=note_id)
-                    button = ui.button("编辑", icon="mdi-square-edit-outline", on_click=edit_on_click)
-                    button.props("flat dense").classes("text-blue-600")
+                    edit_button = ui.button("编辑", icon="mdi-square-edit-outline", on_click=edit_on_click)
+                    edit_button.props("flat dense").classes("text-blue-600")
 
-                    async def delete_note():
-                        async def confirm():
-                            async with NoteService() as service:
-                                result = await service.delete(note_id)
-                                if result.is_ok():
-                                    dialog.close()
-                                    # 删除笔记确实需要强制返回，除非调用 navigate 传查询参数（延迟 ui.timer 不行），让 page 来弹通知，但是那太搞了吧...
-                                    ui.notify(f"删除笔记成功！", type="positive")
-                                    ui.timer(0.8, lambda: go_main(), once=True)
-                                else:
-                                    ui.notify(f"删除笔记 {note_id} 失败，原因：{result.err()}", type="negative")
+                    register_find_button_and_click("o", edit_button.id, is_ctrl=True)
 
-                        # ┌─────────────────────┐
-                        # │   Are you sure?     │
-                        # ├─────────────────────┤
-                        # │ [confirm]  [cancel] │
-                        # └─────────────────────┘
-                        dialog = ui.dialog()
-                        with dialog, ui.card().classes("rounded-xl shadow-lg border border-gray-200 p-5 max-w-sm"):
-                            with ui.column().classes("items-center text-center gap-3"):
-                                with ui.row().classes("items-center p-4"):
-                                    ui.icon("warning_amber", size="2rem").classes("text-yellow-500")
-                                    ui.label("确认删除").classes("text-lg font-semibold text-gray-800")
-                                ui.label("此操作不可恢复，请确认是否删除该笔记？").classes("text-gray-600 text-sm")
-                                with ui.row().classes("gap-3 mt-4"):
-                                    confirm_btn = ui.button("确认", icon="delete", on_click=confirm)
-                                    confirm_btn.props("flat dense color=red").classes("px-4")
-                                    cancel_btn = ui.button("取消", icon="close", on_click=dialog.close)
-                                    cancel_btn.props("flat color=grey").classes("px-4")
-
-                        dialog.open()
-
-                    delete = ui.button("删除", icon="mdi-trash-can-outline", on_click=delete_note)
+                    delete = ui.button("删除", icon="mdi-trash-can-outline",
+                                       on_click=partial(delete_note, note_id=note_id, notify_from="get_note__delete"))
                     delete.props("flat dense color=red").classes("text-red-600 hover:text-red-700")
 
 
 @ui.page("/add_or_edit_note", title="新增或编辑笔记")
-async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: int = None):
+async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: int = None,
+                                source: Literal["home_edit"] | None = None):
     """
 
     :param request: fastapi Request
     :param note_id: note_id 存在为编辑，不存在为新增
     :param temporary_uuid: 供新增使用，为了定位到上传的附件
+    :param source: 从哪进入的（太丑陋了，但是终究是实现了，所以其实始终都是和这样的代码打交道的...）
     """
 
     # ====== 涉及 header, footer, add_css, add_head_html ====== #
 
-    build_header()
-    build_footer()
+    await HeaderView.create()
+    await build_footer()
 
     ui.add_css("""
     .nms-drag-area.nms-dragover {
@@ -632,11 +683,11 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
 
             def on_click():
                 # [2025-11-14] 实践发现，访问详情页很别扭呀
-                if is_add_note_page:
+                # [2025-11-17] 编辑页面新增来源：如果是直接点击主页的编辑按钮进去的，则返回到主页
+                if is_add_note_page or source == "home_edit":
                     go_main()
                 else:
                     go_get_note(note_id)
-                # go_main()
 
             arrow_left_btn = ui.button(icon="mdi-arrow-left", on_click=on_click)
             arrow_left_btn.props("flat round").classes("text-gray-700 hover:bg-gray-100")
@@ -656,7 +707,7 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                     with ui.menu():
 
                         async def ai_generate_title():
-                            if not content.value:
+                            if not content.value or content.value.strip() == "":
                                 ui.notify("正文内容为空，无法生成", type="negative")
                                 return
                             show_loading("正在生成标题...")
@@ -729,9 +780,23 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                             # ui.separator()
                             # import_file = ui.menu_item("导入文件", auto_close=False)
 
+                            ui.separator()
+                            with ui.menu_item("前缀插入", auto_close=False):
+                                with ui.menu().props('anchor="center right" self="center left"'):
+                                    def create_menu_item(text):
+                                        async def on_click():
+                                            if text not in title.value:
+                                                title.value = text + title.value
+
+                                        ui.menu_item(text, auto_close=False, on_click=on_click)
+
+                                    for value in dynamic_settings.prefix_import_values:
+                                        create_menu_item(value)
+
             content = ui.textarea(placeholder="输入笔记内容...")
             content.classes("w-full mt-4 placeholder:text-gray-400").props("spellcheck=false")  # autogrow
             content.props("rows=10")  # 内部文本区域的高度
+            content.classes('leading-relaxed')
 
             # [2025-11-13] 本来放在最下面的，导致数据显示有延迟，不可以放在最下面
             # todo: 将数据获取和前端渲染分离开
@@ -740,7 +805,7 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                 async with NoteService() as service:
                     result = await service.get_note_with_attachments(note_id)
                     if result.is_err():
-                        # todo: 应该弹全局错误弹窗
+                        logger.error("{}", result.err())
                         raise Exception(result.err())
                     note = result.unwrap()
                     logger.debug("note: {}", note)
@@ -775,9 +840,9 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                         if not title.value:
                             ui.notify("标题不能为空", type="negative")
                             return
-                        if not content.value:
-                            ui.notify("内容不能为空", type="negative")
-                            return
+                        # 正文允许为空
+                        if content.value is None:
+                            content.value = ""
 
                         if not rate_limter.allow():
                             ui.notify(f"操作太频繁，请稍后再试", type="negative")
@@ -800,15 +865,19 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                                         ))
 
                                     # 新增笔记页面需要清空
-                                    if is_add_note_page:
-                                        title.value = ""
-                                        content.value = ""
-                                        upload_attachment_card_label.text = (dynamic_settings.attachment_upload_text
-                                                                             .format(0))
-                                    ui.notify("保存笔记成功！", type="positive")
+                                    # if is_add_note_page:
+                                    #     title.value = ""
+                                    #     content.value = ""
+                                    #     upload_attachment_card_label.text = (dynamic_settings.attachment_upload_text
+                                    #                                          .format(0))
+                                    # ui.notify("保存笔记成功！", type="positive")
+
                                     # 保存笔记不是特别需要强制返回吧，而且这个延迟太不动态了，很难受
                                     # 想迅速响应的话，可以让 ui.notify 在 go_main 调用后执行？主要是进入新页面后弹出来也还好
                                     # ui.timer(0.8, lambda: go_main(), once=True)
+
+                                    ui.notify("保存笔记成功！", type="positive")
+                                    ui.timer(0.6, lambda: go_get_note(instance.id, notify_from="add_note"), once=True)
                         else:
                             async with NoteService() as service:
                                 result = await service.update(note_id, title=title.value, content=content.value)
@@ -850,13 +919,55 @@ async def page_add_or_edit_note(request: Request, temporary_uuid: str, note_id: 
                     content.on("nms_upload_success", on_nms_upload_success)
 
 
-class BuildPageMainUI:
-    @classmethod
-    async def create(cls):
-        """异步工厂方法"""
-        self = cls()
-        await self._initialize()  # self._build_ui()
-        return self
+class PageMainController(Controller["PageMainView"]):
+    async def on_clear_icon_click(self):
+        if not self.view.search_input.value:
+            return
+        self.view.search_input.value = ""
+        await self.view.rebuild_table(search_content=self.view.search_input.value)
+
+    async def on_search_input_keydown_enter(self):
+        logger.debug("on_enter_pressed called")
+
+        # 搜索按钮这边刷新不建议设置 current_page
+        current_page = getattr(self.view.table, "current_page", None)
+        logger.debug("[on_enter_pressed] current_page = {}", current_page)
+
+        # todo: self.select 在这些地方都会涉及！其实这种下拉框也视为 user_config 反倒是件简单的事情
+        #       虽然每次都要访问数据库，但是实际上直接在初始化阶段塞到全局变量中就行了！set_value 和 get_value 修改一下即可，
+        #       这也体现了 services 的好处了
+        await self.view.rebuild_table(search_content=self.view.search_input.value)
+
+    async def on_select_change(self, e: ValueChangeEventArguments):
+        # todo: 实现 value 切换导致下面的 table 刷新（说起 table，nicegui 有 table 扩展库诶）
+        # todo: 尝试使用 bind_value 函数 + 使用那个双向绑定库？
+        home_select_option = await self.get_home_select_option()
+        if e.value == home_select_option:
+            return
+        async with UserConfigService() as user_config_service:
+            await user_config_service.set_value("home_select_option", e.value)
+
+        await self.view.rebuild_table(search_content=self.view.search_input.value)
+
+    async def get_home_select_option(self):
+        async with UserConfigService() as user_config_service:
+            return await user_config_service.get_value("home_select_option")
+
+    async def get_search_content(self) -> str:
+        async with UserConfigService() as user_config_service:
+            search_content = await user_config_service.get_value("search_content")
+        return search_content or ""
+
+    async def set_search_content(self, search_content: str):
+        async with UserConfigService() as user_config_service:
+            await user_config_service.set_value("search_content", search_content)
+
+    async def on_search_input_change(self, e: ValueChangeEventArguments):
+        await self.set_search_content(e.value)
+
+
+class PageMainView(View["PageMainController"]):
+    controller_class = PageMainController
 
     async def _initialize(self) -> None:
         with ui.column().classes("w-full mx-auto px-4 sm:px-6 md:px-8 max-w-7xl") as self.content:
@@ -864,8 +975,9 @@ class BuildPageMainUI:
                 ui.label("我的笔记").classes("text-xl font-bold text-gray-900")
                 ui.space()
                 with ui.row():
-                    with ui.input(placeholder="搜索笔记...") as search_input:
-                        # search_input.classes("border rounded-lg") # 四周有线，四角椭圆
+                    with ui.input(placeholder="搜索笔记...",
+                                  on_change=self.controller.on_search_input_change) as search_input:
+                        self.search_input = search_input
                         with search_input.add_slot("prepend"):
                             ui.icon("mdi-magnify").classes("ml-2")
                         with search_input.add_slot("append"):
@@ -874,24 +986,18 @@ class BuildPageMainUI:
                                 "text-gray-400 "
                                 "rounded-lg hover:bg-gray-200 "
                             )
-                            clear_icon.on("click", self.on_clear_icon_click)
-                        search_input.on("keydown.enter", self.on_search_input_keydown_enter)
-                        self.search_input = search_input
+                            clear_icon.on("click", self.controller.on_clear_icon_click)
+                        search_input.value = await self.controller.get_search_content()
+                        search_input.on("keydown.enter", self.controller.on_search_input_keydown_enter)
 
-                    # [question] value 能否类似 django 的 choices，一个是指代符号，一个是 human text
-                    # todo: 设计 select、current_page 等内容的，一律用 ui xxx storage 或 globals() 或 user_config！
-                    #       话说，如果是纯种前端是不是好很多，这种情况显然都是常规需求，而我还得自己摸索...
-                    self.select = ui.select(["全部笔记", "超链接", "有附件"],
-                                            value="全部笔记",
-                                            on_change=self.on_select_change).classes("min-w-24")
+                    # todo: 设计 select、current_page 等内容的，一律用 ui xxx storage 或 globals() 或 user_config！话说，如果是纯种前端是不是好很多，这种情况显然都是常规需求，而我还得自己摸索...
+                    ui.select(dict(zip(NoteTypeMaskedEnum.values(), ["普通笔记", "超链接"])),
+                              value=await self.controller.get_home_select_option(),
+                              on_change=self.controller.on_select_change).classes("min-w-24")
 
             # todo: 将 rebuild_table 考虑拆分，按上面的样子平铺开来（即尽量做到骨架由当前函数构建，血肉拆分出去）
             self.table = ui.column().classes("w-full")
-            await self.rebuild_table()
-
-    class Controller:
-        def __init__(self, view):
-            self.view = view
+            await self.rebuild_table(search_content=self.search_input.value)
 
     async def _create_table_card(self, note: Note, attachment_count: int) -> ui.card:
         """table card，无普遍性"""
@@ -946,12 +1052,23 @@ class BuildPageMainUI:
 
                 # 底部行：附件数量 + 查看按钮
                 with ui.row().classes(
-                        "w-full items-center justify-between mt-3 pt-3 border-t border-gray-100"):
-                    label = ui.label(f"{attachment_count} 个附件 · {str(note.created_at)}")
+                        "w-full items-center justify-between "
+                        "mt-3 pt-3 border-t border-gray-100 flex-nowrap"
+                ):
+                    label = ui.label(f"{attachment_count} 个附件 · {note.updated_at}")
                     label.classes("text-sm text-gray-600 whitespace-nowrap flex-shrink-0")
-                    eye = ui.button(icon="mdi-eye-outline", on_click=partial(go_get_note, note_id=note.id))
-                    eye.props("flat round dense").classes("text-gray-500 hover:text-blue-600")
-                    """Quasar props + Tailwind hover 效果"""
+                    label.tooltip("上次编辑时间")
+                    with ui.row().classes("items-center justify-between gap-x-0 flex-nowrap"):
+                        eye = ui.button(icon="mdi-eye-outline", on_click=partial(go_get_note, note_id=note.id))
+                        eye.props("flat round dense").classes("text-gray-500 hover:text-blue-600 ")
+                        edit = ui.button(icon="mdi-square-edit-outline",
+                                         on_click=partial(go_edit_note, note_id=note.id, source="home_edit"))
+                        edit.props("flat round dense").classes("text-gray-500 hover:text-blue-600")
+                        # 这个删除没必要，因为大部分情况，你得先阅读才能考虑删除吧？
+                        delete = ui.button(icon="mdi-trash-can-outline",
+                                           on_click=partial(delete_note, note_id=note.id, delay=False))
+                        # delete.props("flat dense color=red").classes("text-red-600 hover:text-red-700")
+                        delete.props("flat round dense").classes("text-gray-500 hover:text-blue-600")
         return card
 
     async def _create_paging_control(self, current_page: int, total_pages: int, search_content: str):
@@ -1022,10 +1139,10 @@ class BuildPageMainUI:
     async def rebuild_table(self,
                             current_page: int = 1,
                             search_content: str | None = None,
-                            has_attachment: bool = None,
-                            filters: Dict | None = None,
-                            hyperlink: bool = False):
+                            filters: Dict | None = None):
         self.table.clear()
+
+        filters = filters or {}
 
         # todo: 骨架与实现推荐拆分（临时设想）
         #       到底咋实现呢？Controller 层？View 层？
@@ -1036,16 +1153,16 @@ class BuildPageMainUI:
         # - 用户快速点击时可能触发多次异步操作（竞态条件）
 
         # region - build search_filter
-        search_filter = None
+        search_filter = {}
+
         if search_content:
-            search_filter = search_filter or {}
             search_filter["search_content"] = search_content
-        if has_attachment is not None:
-            search_filter = search_filter or {}
-            search_filter["has_attachment"] = has_attachment
-        if filters is not None:
-            search_filter = search_filter or {}
-            search_filter.update(filters)
+
+        async with UserConfigService() as user_config_service:
+            home_select_option = await user_config_service.get_value("home_select_option")
+            search_filter["note_type"] = home_select_option
+
+        search_filter.update(filters)
         # endregion
 
         async with UserConfigService() as user_config_service:
@@ -1070,49 +1187,19 @@ class BuildPageMainUI:
 
             await self._create_paging_control(current_page, total_pages, search_content)
 
-    def get_has_attachment(self):
-        has_attachment = self.select.value == "有附件"
-        return has_attachment
-
-    async def on_clear_icon_click(self):
-        if not self.search_input.value:
-            return
-        self.search_input.value = ""
-        await self.rebuild_table(search_content=self.search_input.value, has_attachment=self.get_has_attachment())
-
-    async def on_search_input_keydown_enter(self):
-        logger.debug("on_enter_pressed called")
-
-        # 搜索按钮这边刷新不建议设置 current_page
-        current_page = getattr(self.table, "current_page", None)
-        logger.debug("[on_enter_pressed] current_page = {}", current_page)
-
-        # todo: self.select 在这些地方都会涉及！其实这种下拉框也视为 user_config 反倒是件简单的事情
-        #       虽然每次都要访问数据库，但是实际上直接在初始化阶段塞到全局变量中就行了！set_value 和 get_value 修改一下即可，
-        #       这也体现了 services 的好处了
-        await self.rebuild_table(search_content=self.search_input.value)
-
-    async def on_select_change(self, e: ValueChangeEventArguments):
-        # todo: 实现 value 切换导致下面的 table 刷新（说起 table，nicegui 有 table 扩展库诶）
-        # todo: 尝试使用 bind_value 函数 + 使用那个双向绑定库
-
-        # 两个方案：1. 配置 2. table.clear 但是好像二者融合更好？
-        if e.value == "有附件":
-            await self.rebuild_table(search_content=self.search_input.value, has_attachment=True)
-        elif e.value == "超链接":
-            await self.rebuild_table(search_content=self.search_input.value,
-                                     filters={"note_type": NoteTypeMaskedEnum.HYPERLINK})
-        else:
-            await self.rebuild_table(search_content=self.search_input.value)
-
 
 @ui.page("/", title="笔记管理系统")
-async def page_main():
+async def page_main(request: Request, search_content: str = "", notify_from: str = None):
     # ====== 开始构建 ui（我将使用 `[step]` 详细记录自己的开发过程，step 代指我在编写这段代码，行动上做了什么） ====== #
 
     # [step] 使用 region 进行注释拆分的时候发现页面结构基本按照下列方式分层，故而拆分成函数
-    build_header()
+    await HeaderView.create()
+    await build_footer()
 
-    await BuildPageMainUI.create()
+    # todo: 这种行为如果能封装降低使用复杂度和耦合度，那也可以接受！
+    # if notify_from in ["get_note__delete", "home__delete"]:
+    #     ui.timer(0, lambda: ui.notify(f"删除笔记成功！", type="positive"), once=True)
 
-    build_footer()
+    await PageMainView.create(query_params={
+        "search_content": search_content
+    })

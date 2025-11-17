@@ -10,7 +10,7 @@ from sqlalchemy.ext.declarative import DeclarativeMeta
 from loguru import logger
 from result import Ok, Err, Result
 
-from models import AsyncSessionLocal, Note, Attachment, UserConfig
+from models import AsyncSessionLocal, Note, Attachment, UserConfig, NoteTypeMaskedEnum
 
 # [note] 项目较小时，services.py 多半是累赘，基础的 CRUD 本就不需要抽成单独的函数，当然如果多次使用，自然也是 ok 的
 #        其实即使项目小，这样一个简单的拆分操作，也是很有益处的，建议还是优先考虑拆到 services.py 中吧
@@ -21,11 +21,11 @@ from models import AsyncSessionLocal, Note, Attachment, UserConfig
 # [note] Service 是我写的模板函数，但是 result 库是 ai 找到的，差不多是模仿 Rust 实现的第三方库，太秒了，太强了
 #        但是我 rust 只理解皮毛，Err 里面是 Exception 类型还是就单纯的字符串呀？（我目前感觉是字符串，也可以是异常）
 
-T = TypeVar("T", bound=DeclarativeMeta)  # 定义一个类型变量，约束为 SQLAlchemy 模型类（即 DeclarativeMeta 的子类）
+M = TypeVar("M", bound=DeclarativeMeta)  # 定义一个类型变量，约束为 SQLAlchemy 模型类（即 DeclarativeMeta 的子类）
 
 
-class Service[T]:
-    model: Type[T]  # # 子类必须设置为具体的模型类，如 User
+class Service[M]:
+    model: Type[M]  # # 子类必须设置为具体的模型类，如 User
 
     def __init__(self):
         self.db: AsyncSession | None = None
@@ -41,7 +41,7 @@ class Service[T]:
         # 返回 False 表示不抑制异常
         return False
 
-    async def create(self, **kwargs) -> Result[T, str]:
+    async def create(self, **kwargs) -> Result[M, str]:
         """C - 创建一个新记录"""
         try:
             instance = self.model(**kwargs)
@@ -53,19 +53,19 @@ class Service[T]:
             logger.error(e)
             return Err(str(e))
 
-    async def get(self, ident: int) -> Result[T, str]:
+    async def get(self, ident: int) -> Result[M, str]:
         """R - 根据主键获取一条记录"""
         try:
             instance = await self.db.get(self.model, ident)
             if instance is None:
-                logger.debug(f"{self.model.__name__} {ident} doesn't exist")
+                logger.error(f"{self.model.__name__} {ident} doesn't exist")
                 return Err(f"{self.model.__name__} {ident} doesn't exist")
             return Ok(instance)
         except Exception as e:
             logger.error(e)
             return Err(str(e))
 
-    async def update(self, ident: int, **kwargs) -> Result[T, str]:
+    async def update(self, ident: int, **kwargs) -> Result[M, str]:
         """U - 根据主键更新记录"""
         try:
             instance = await self.db.get(self.model, ident)
@@ -94,25 +94,27 @@ class Service[T]:
             logger.error(e)
             return Err(str(e))
 
-    async def list_all(self, order_by: str = "id", **kwargs) -> Result[Sequence[T], str]:
-        """列出所有记录（无排序、无过滤）"""
+    def parse_to_order_by_field(self, order_by: str):
+        """解析得到排序字段"""
+        is_desc = False
+        # 默认是正序（小到大），前缀 "-" 待办倒序（大到小）
+        if order_by.startswith("-"):
+            order_by = order_by[1:]
+            is_desc = True
+        if not hasattr(self.model, order_by):
+            raise AttributeError(f"{order_by}({self.model.__name__}) doesn't exist")
+        order_by_field = getattr(self.model, order_by)
+        if is_desc:
+            order_by_field = desc(order_by_field)
+        # logger.debug("order_by: {}, order_by_field: {}", order_by, order_by_field)
+        return order_by_field
+
+    async def list_all(self, order_by: str = "id", extra_stmt=None, **kwargs) -> Result[Sequence[M], str]:
+        """列出所有记录（无排序、无过滤、无任何特殊情况）"""
         # todo: 参考 django 的 name__contains 去扩展 kwargs
         try:
-            stmt = select(self.model)
-            # region - 形如 -id 代表倒序排序
-            is_desc = False
-            if order_by.startswith("-"):
-                is_desc = True
-                order_by = order_by[1:]
-            if not hasattr(self.model, order_by):
-                raise AttributeError(f"{order_by}({self.model.__name__}) doesn't exist")
-            order_by_field = getattr(self.model, order_by)
-            logger.debug("order_by: {}, order_by_field: {}", order_by, order_by_field)
-            if is_desc:
-                stmt = stmt.order_by(desc(order_by_field))
-            else:
-                stmt = stmt.order_by(order_by_field)
-            # endregion
+            order_by_field = self.parse_to_order_by_field(order_by)
+            stmt = select(self.model).order_by(order_by_field)
             result = await self.db.execute(stmt)
             return Ok(result.scalars().all())
         except Exception as e:
@@ -134,8 +136,7 @@ class NoteService(Service[Note]):
     def __init__(self) -> None:
         super().__init__()
 
-    @classmethod
-    async def build_filter_statement(cls,
+    async def build_filter_statement(self,
                                      page: int | None = 1,
                                      search_filter: Dict | None = None,
                                      select_field=Note):
@@ -152,11 +153,11 @@ class NoteService(Service[Note]):
         async with UserConfigService() as user_config_service:
             page_size = await user_config_service.get_page_size()
 
+        # [note] 对于 `Dict | None` 这种类型的变量，判断应该用 not XXX 而不是 is None
         logger.debug("search_filter: {}", search_filter)
         search_filter = search_filter or {}
         search_content = search_filter.get("search_content", None)
         has_attachment = search_filter.get("has_attachment", None)
-        note_type = search_filter.get("note_type", None)
         order_by = search_filter.get("order_by", "-updated_at")  # 默认按 updated_at 倒叙排列
 
         stmt = select(select_field)
@@ -172,21 +173,7 @@ class NoteService(Service[Note]):
         elif has_attachment is False:  # noqa
             stmt = stmt.where(~exists().where(Attachment.note_id == Note.id))
 
-        if note_type is not None:
-            stmt = stmt.where(Note.note_type == note_type)
-
-        # region - order-by
-        is_desc = False
-        if order_by.startswith("-"):
-            order_by = order_by[1:]
-            is_desc = True
-        order_by_field = getattr(cls.model, order_by, None)
-        if order_by_field is None:
-            raise AttributeError(f"{order_by}({cls.model.__name__}) doesn't exist")
-        if is_desc:
-            order_by_field = desc(order_by_field)
-        # endregion
-        logger.debug("order_by: {}, order_by_field: {}", order_by, order_by_field)
+        order_by_field = self.parse_to_order_by_field(order_by)
 
         stmt = stmt.order_by(order_by_field)
 
@@ -203,14 +190,31 @@ class NoteService(Service[Note]):
 
         return stmt
 
+    async def execute(self, stmt, note_type: str | None = None):
+        # fixme: 这个方法不对，因为总是需要考虑调用点是否正确！
+        try:
+            # 我担心 stmt 无法 .where
+            if note_type is None:
+                note_type = NoteTypeMaskedEnum.DEFAULT
+            new_stmt = stmt.where(Note.note_type == note_type)
+            # logger.debug("new_stmt: {}", new_stmt)
+            result = await self.db.execute(new_stmt)
+        except Exception as e:
+            logger.error(e)
+            result = await self.db.execute(stmt)
+        return result
+
     async def get_notes(self, page: int = 1, search_filter: Dict | None = None) -> Sequence[Note]:
         """在有过滤和分页的情况下获取 Note List"""
+        logger.debug("[get_notes] start")
         stmt = await self.build_filter_statement(page=page, search_filter=search_filter)
-        result = await self.db.execute(stmt)
+        note_type = None if not search_filter else search_filter.get("note_type", None)
+        result = await self.execute(stmt, note_type=note_type)
         return result.scalars().all()
 
     async def get_note_with_attachments(self, ident: int) -> Result[Note, str]:
         """获得有附件的 Note"""
+        logger.debug("[get_note_with_attachments] start")
         try:
             stmt = select(Note).where(Note.id == ident).options(selectinload(Note.attachments))
             result = await self.db.execute(stmt)
@@ -224,11 +228,13 @@ class NoteService(Service[Note]):
 
     async def count_note(self, search_filter: Dict | None = None) -> Result[int, str]:
         """在有过滤的情况下，统计 Note 数量"""
+        logger.debug("[count_note] start")
         try:
             stmt = await self.build_filter_statement(page=None,
                                                      search_filter=search_filter,
                                                      select_field=func.count(Note.id))
-            result = await self.db.execute(stmt)
+            note_type = None if not search_filter else search_filter.get("note_type", None)
+            result = await self.execute(stmt, note_type=note_type)
             count = result.scalar()
             if not isinstance(count, int):
                 raise TypeError(f"{count} is not int")

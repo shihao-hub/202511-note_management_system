@@ -97,10 +97,16 @@ class NoteTypeMaskedEnum:
     DEFAULT = "default"  # 为了避免混淆，强烈建议显式使用字符串值，不要使用 enum.auto()（默认为 1）
     HYPERLINK = "hyperlink"
 
+    @classmethod
+    def values(cls) -> List[str]:
+        return [cls.DEFAULT, cls.HYPERLINK]
+
 
 class Note(Base):
     title = Column(String(200), nullable=False)
     content = Column(Text, nullable=False)
+    # todo: 这个导致每次过滤都需要添加这个字段，很麻烦吧？没有别的办法吗？我觉得不应该！
+    #       所以 stmt 必须调用某个函数再去执行？或者封装一下 self.db.execute？
     note_type = Column(Text, server_default=NoteTypeMaskedEnum.DEFAULT)
 
     # [knowledge] backref 可以只在一个表中定义，另一个表会自动创建
@@ -111,6 +117,18 @@ class Note(Base):
     delete-orphan：当关联关系被移除时（如parent.children = []），被移除的Child对象会被删除
     
     """
+
+
+class TagSourceEnum(enum.Enum):
+    USER = "user"
+    AUTO = "auto"
+
+
+class Tag(Base):
+    name = Column(String(200), nullable=False)
+    source = Column(String(200), nullable=False)  # todo: 如何和 enum 绑定在一起啊？
+
+    note_id = Column(Integer, ForeignKey("note.id"))
 
 
 class Attachment(Base):
@@ -148,10 +166,15 @@ class UserProfileTypedDict(TypedDict):
 class UserConfig(Base):
     @staticmethod
     def default_user_profile():
+        """除了新建表时使用，后续新增内容时，为了保证兼容性，也会使用该函数"""
         return {
             "note_detail_render_type": NoteDetailRenderTypeEnum.LABEL.value,
             "note_detail_autogrow": False,
-            "page_size": 6
+            "page_size": 6,
+            "home_select_option": NoteTypeMaskedEnum.DEFAULT,
+            "search_content": ""
         }
 
+    # todo: 能否搞个 :memory: 访问？
+    # todo: 仔细考虑一下 user_config.profile 该如何是好，如果将所有 select 相关类似选项都视为 profile，然后通过刷新页面的方式，可以很轻松实现很多功能！
     profile = Column(JSON, comment="动态字段，缓解关系型数据库的弊端", default=lambda: UserConfig.default_user_profile())

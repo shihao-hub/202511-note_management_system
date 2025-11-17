@@ -18,7 +18,7 @@ from nicegui import background_tasks, ui
 from nicegui.events import ValueChangeEventArguments
 
 from models import AsyncSessionLocal, Attachment
-from settings import dynamic_settings
+from settings import dynamic_settings, ENV
 from services import UserConfigService
 
 
@@ -253,27 +253,35 @@ class DeepSeekClient:
             await self.client.close()
         return False
 
-    async def ai_generate_title(self, content: str) -> Result[str, str]:
+    async def _ai_generate(self, system_content, user_content: str) -> Result[str, str]:
         try:
-            system_content = """
-            你是一位文本总结专家，你需要将用户发送的内容总结成一个简短的标题（不要超过 200 个字符）
-            """
             params = dict(
                 model=self.model,
                 messages=[
                     {"role": "system", "content": system_content},
-                    {"role": "user", "content": f"{content}"},
+                    {"role": "user", "content": f"{user_content}"},
                 ],
                 stream=False
             )
             response = await self.client.chat.completions.create(**params)  # messages 的格式会提示错误，所以选择这样处理
             text = response.choices[0].message.content.strip()
-            logger.debug("[ai_generate_title] text: {}", text)
+            # logger.debug("[_ai_generate] text: {}", text)
             return Ok(text)
         except Exception as e:
             logger.error(e)
             return Err(str(e))
 
+    async def ai_generate_title(self, user_content: str) -> Result[str, str]:
+        system_content = """
+        你是一位文本总结专家，你需要将用户发送的内容总结成一个简短的标题（不要超过 200 个字符）
+        """
+        return await self._ai_generate(system_content, user_content)
+
+    async def ai_generate_text(self, user_content: str) -> Result[str, str]:
+        system_content = """
+        你是一位文本总结专家，你需要将用户发送的内容总结成一个简短的标题（不要超过 200 个字符）
+        """
+        return await self._ai_generate(system_content, user_content)
 
 # todo: 改成装饰器
 class RateLimiter:
@@ -456,12 +464,10 @@ async def refresh_page():
     await ui.run_javascript("location.reload()")
 
 
-def build_footer() -> ui.footer:
+async def build_footer():
     # [css note] ui.header 的阴影效果无用，ui.footer 还得用经典效果
     with ui.footer().classes("bg-white border-t border-gray-200") as footer:
         pass
-
-    return footer
 
 
 def build_softmenu(icon="mdi-note", size="16px", color="blue-600") -> ui.button:
@@ -525,7 +531,7 @@ def is_valid_filename(filename: str) -> Result[bool, str]:
         # 3. 不能以空格或点结尾（Windows 会自动截断，导致问题）
         if filename.endswith(" ") or filename.endswith("."):
             return Err("不能以空格或点结尾")
-        
+
         # 4. 不能是 Windows 保留设备名（不区分大小写）
         reserved_names = {
             "CON", "PRN", "AUX", "NUL",
@@ -546,6 +552,17 @@ def is_valid_filename(filename: str) -> Result[bool, str]:
     except Exception as e:
         logger.error(e)
         return Err(str(e))
+
+
+def register_find_button_and_click(pressed_key: str, button_id: str, is_ctrl: bool = False):
+    """注册 js 事件，找到某个按钮，然后点击"""
+    context = {
+        "button_id": button_id,
+        "pressed_key": pressed_key,
+        "is_ctrl": is_ctrl,
+    }
+    ui.add_head_html("<script>{0}</script>".format(ENV.get_template("find_button_and_click.js").render(context)))
+
 
 def show_file_dialog():
     # [在 native 模式下改用系统对话框](https://lxblog.com/qianwen/share?shareId=429d4d1b-f53a-4ee0-83d9-700b6cdd5956]
@@ -583,5 +600,37 @@ def show_file_dialog():
     with ui.button(icon="menu"):
         with ui.menu() as menu:
             ui.menu_item("导出为文件", on_click=export_handler)
+
+
+def extract_urls(text):
+    # 匹配以 http:// 或 https:// 开头的 URL
+    url_pattern = r'https?://[^\s<>"{}|\\^`[\]]+'
+    urls = re.findall(url_pattern, text)
+    logger.debug("text: {}, urls: {}", text, urls)
+    return urls
+
+
+class LoadingOverlay:
+    def __init__(self, default_message: str = "处理中..."):
+        # 创建遮罩层：纯毛玻璃效果、无背景色、默认隐藏
+        self.overlay = ui.element("div").classes(
+            "fixed inset-0 flex items-center justify-center z-50"
+        ).style("backdrop-filter: blur(2px); display: none;")
+        with self.overlay:
+            with ui.card().classes("p-6 shadow-lg rounded-lg bg-white flex flex-col items-center"):
+                ui.spinner(size="lg")
+                self.label = ui.label(default_message).classes("mt-4 text-gray-700")
+
+
+    def show(self, message: str = None):
+        """显示加载遮罩，可选更新提示文字"""
+        if message is not None:
+            self.label.set_text(message)
+        self.overlay.style("display: flex;")
+
+
+    def hide(self):
+        """隐藏加载遮罩"""
+        self.overlay.style("display: none;")
 
 # endregion

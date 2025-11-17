@@ -11,9 +11,7 @@ wheels/
 .env
 .idea
 
-dist_dependencies
 dist_v1
-
 exports
 
 *.log

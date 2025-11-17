@@ -41,16 +41,16 @@ uv run ./main.py --native # 运行项目
 ## 项目预览
 
 **主页**：
-![img.png](images/page_main.png)
+![img.png](docs/images/page_main.png)
 
 **笔记详情**：
-![img.png](images/page_get_note.png)
+![img.png](docs/images/page_get_note.png)
 
 **编辑笔记**：
-![img.png](images/page_edit_note.png)
+![img.png](docs/images/page_edit_note.png)
 
 **新建笔记**：
-![img.png](images/page_add_note.png)
+![img.png](docs/images/page_add_note.png)
 
 
 ## 开发感想
@@ -67,3 +67,7 @@ uv run ./main.py --native # 运行项目
 但是不论项目结构如何、代码质量如何，一个真正能运行起来的可用的软件才是关键。先不论好用与否，只要能用，对于开发者来说整个
 项目经历是有意义的。总而言之，一个能运行起来的项目才是关键，一切优化可以之后再提（况且不提那又如何呢？）
 
+- 强业务相关的项目开发会消耗热情，尤其 web 开发方面，需要多多思考出路
+- 强业务项目的代码如果绕不过，建议多去提升设计、架构、全局方面的能力
+- 很多程序功能都不是一蹴而就的，都是在测试和开发的过程中迭代的，莫要妄自菲薄，也莫要目中无人
+- **再次强调**，尽量远离业务，多思考其他出路，如算法、系统开发等
