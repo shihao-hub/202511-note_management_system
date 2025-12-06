@@ -10,7 +10,7 @@ wheels/
 .venv
 .idea
 
-app/exports
+unit/exports
 
 .env
 *.log
