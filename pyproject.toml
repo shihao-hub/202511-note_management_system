@@ -1,0 +1,49 @@
+[project]
+name = "note-management-system"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "addict>=2.4.0",
+    "aiocache>=0.12.3",
+    "aiosqlite>=0.21.0",
+    "alembic>=1.17.1",
+    "async-lru>=2.0.5",
+    "fastapi-limiter>=0.1.6",
+    "gradio-client>=1.13.3",
+    "jinja2>=3.1.6",
+    "loguru>=0.7.3",
+    "lupa>=2.6",
+    "matplotlib>=3.10.7",
+    "nicegui==2.24.0",
+    "numpy>=2.3.4",
+    "openai>=2.7.2",
+    "pandas>=2.3.3",
+    "portpicker>=1.6.0",
+    "pydantic-settings>=2.12.0",
+    "pyecharts>=2.0.9",
+    "pyperclip>=1.11.0",
+    "python-dotenv>=1.2.1",
+    "pytz>=2025.2",
+    "pywebview>=6.1",
+    "result>=0.17.0",
+    "slowapi>=0.1.9",
+    "sqlalchemy>=2.0.44",
+    "sqlalchemy-utc>=0.14.0",
+]
+
+[dependency-groups]
+dev = [
+    "cachetools>=6.2.2",
+    "duckdb>=1.4.1",
+    "ipython>=9.7.0",
+    "kafka-python>=2.2.16",
+    "opencv-python>=4.11.0.86",
+    "pillow>=12.0.0",
+    "pyinstaller>=6.16.0",
+    "pymemcache>=4.0.0",
+    "ring>=0.10.1",
+    "tinydb>=4.8.2",
+    "unqlite>=0.9.9",
+]

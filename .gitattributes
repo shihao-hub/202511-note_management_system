@@ -1,0 +1,5 @@
+app/docs/** linguist-vendored
+app/tests/** linguist-vendored
+app/tools/** linguist-vendored
+app/fonts/** linguist-vendored
+app/static/** linguist-vendored

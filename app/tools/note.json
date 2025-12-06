@@ -1,0 +1,458 @@
+[
+    {
+        "title": "【抖音】RAG的重要性、定义及实现方法",
+        "content": "0.76 c@n.qR icA:/ 05/10 RAG为什么是重要的AI技术？什么是RAG？如何实现RAG？ # JavaScript # 前端开发工程师 # 编程 # 程序员 # web前端  https://v.douyin.com/kh-62gSEitk/ 复制此链接，打开Dou音搜索，直接观看视频！\n\n\n提示词模板：\n\n参考以下文档内容，回答用户的问题。\n\n文档内容：\n\n`------`\n\n`------`\n\n用户问题：\n{question}\n\n",
+        "id": 7,
+        "created_at": "2025-11-13 09:24:30.206",
+        "updated_at": "2025-11-14 15:29:10.472",
+        "note_type": "default"
+    },
+    {
+        "title": "nicegui 笔记",
+        "content": "\nnicegui 基础与进阶\n\n1. 通过 [nicegui 中文网](https://nicegui.cn)熟悉 nicegui 基础内容和组件\n2. tailwind css 属于 nicegui 基础美化层面，轻微掌握它即可做出来还可以接受的页面\n3. quasar 属于进阶美化，详见[官网](https://quasar.dev/vue-components)\n4. 再想自定义化，就得通过 `add_head_html` 等方法添加 css 和 js 了。我主要使用过 js 实现复杂的事件监听，因为 nicegui 的事件监听传入的 e 非浏览器层面的 e 参数。",
+        "id": 18,
+        "created_at": "2025-11-13 20:05:21.620",
+        "updated_at": "2025-11-14 14:55:02.759",
+        "note_type": "default"
+    },
+    {
+        "title": "如何快速学习一门新技术？",
+        "content": "1. 推荐先简单入门，而后立刻找小项目模仿\n2. 多做项目，多看文档，虽然很多文档英语差很难读，但是多尝试，多练习，写项目过程中很快就能掌握的。\n\n\n\n",
+        "id": 19,
+        "created_at": "2025-11-14 08:56:17.103",
+        "updated_at": "2025-11-14 08:56:17.103",
+        "note_type": "default"
+    },
+    {
+        "title": "使用 NiceGUI 创建带有 IDEA 风格菜单栏的 Python Web 应用",
+        "content": "```python\nfrom nicegui import ui\n\n\n@ui.page('/about')\ndef about():\n    with ui.column().classes('w-full p-4'):\n        ui.label('关于页面')\n\n# 顶部导航栏\nwith ui.header().style('background-color: #3874c8; color: white;'):\n    with ui.row().classes('w-full items-center px-4'):\n        # 菜单按钮\n        with ui.button(icon='menu').props('flat color=white'):\n            # 下拉菜单\n            with ui.menu().style('background-color: #f0f0f0'):\n                with ui.list().props('dense'):\n                    # 一级菜单：文件\n                    with ui.menu_item('文件', auto_close=False).classes('items-center justify-between'):\n                        ui.icon('keyboard_arrow_right')\n                        with ui.menu().props('anchor=\"top end\" self=\"top start\"'):\n                            with ui.list().props('dense'):\n                                ui.menu_item('新建', on_click=lambda: ui.open('/'))\n                                ui.menu_item('打开', on_click=lambda: ui.open('/about'))\n                                ui.separator()\n                                ui.menu_item('退出', on_click=ui.navigate.back)\n\n                    # 一级菜单：编辑\n                    with ui.menu_item('编辑', auto_close=False).classes('items-center justify-between'):\n                        ui.icon('keyboard_arrow_right')\n                        with ui.menu().props('anchor=\"top end\" self=\"top start\"'):\n                            with ui.list().props('dense'):\n                                ui.menu_item('撤销')\n                                ui.menu_item('重做')\n\n                    # 一级菜单：帮助\n                    ui.menu_item('帮助', on_click=lambda: ui.open('/about'))\n\n        # 页面标题\n        ui.label('My App').classes('font-bold ml-4')\n\nui.run(title='IDEA 风格菜单', language='zh-CN')\n```",
+        "id": 20,
+        "created_at": "2025-11-14 10:46:55.002",
+        "updated_at": "2025-11-14 10:47:54.960",
+        "note_type": "default"
+    },
+    {
+        "title": "【待办】笔记管理系统",
+        "content": "#### 处理待办事项过程中的笔记\n\n1. v1.1.2 选择使用 alembic 成功进行了版本迁移！兼容了旧版本数据库文件！\n2. alembic 及各版本的数据库文件一定要备份，这样方便兼容旧版本（我这么小的软件都很麻烦，windows 真牛啊）\n\n#### 待办事项\n\n2. 附件上传区域也有点太大了，以及最好支持点击出现选文件的弹窗\n\n4. 最好新增导入导出功能，因为该项目使用 sqlite 作为文件系统的（导出所有文件，主键搭配文件名，修改文件名时记得自动填充后缀，已经被改掉的算了）\n\n5. 查阅附件目前的查看或下载按钮是直接打开一个网址的，查看或下载取决于浏览器的行为...\n\n6. **急** - 新增 tag 添加与 tag 筛选，比如：抖音、待办事项等 tag\n\n    必填 + 笔记置顶功能！\n\n\trebuild tags？自动从标题提取形如 【xxx】的内容？提取完成后，除非用户删掉，不然不会丢失\n\n    [在数据库表中增加一个用于排序的字段，并在查询时按照该字段排序](https://lxblog.com/qianwen/share?shareId=0fa6089f-dd22-4ac9-a7ac-efc3bf37f6eb)\n\n8. 菜单栏新增设置功能，设想：该设置初始时 json 文件导入到数据库中，之后都会从数据库读取配置（话说连接数据库到底性能如何？）\n\n\t其实主要想解决的还是配置项，配置项理论上就是一个大 json 对象，key 可以用 a.b.c.d 的方式来分割（__ 太丑了）\n\n10. 搜索框实现拼音提示功能？（比如记录搜索过的内容，且可以手动删除、类似浏览器一样出来联想）\n\n       我很好奇记录搜索过的内容都是用什么存储的，是否还是数据库？\n\n12. **急** - 笔记排序功能（最简单的肯定是往前移）\n16. ai 生成标题最好支持撤回功能，每次都会记录保存后的标题，之后保存之后才会更新那个变量，这样差不多就是实现撤回功能了。\n18. 能否实现自动推送更新功能？但是这个好复杂，因为要考虑兼容性，这个好痛苦啊，这个得好好考虑一下。\n21. **急** - 显示笔记总数量\n28. 有没有什么免费 ai 使用？单纯文本总结使用免费 ai 就可以了。\n\n      免费试用次数也可以，用完换 ds 呗。\n\n      记得封装成一个类。其实说实在的，应该都兼容 openai 了吧，那样的话感觉很简单啊。\n\n      [盘点免费且靠谱的AI大模型 API，统一封装，任性调用！](https://blog.csdn.net/u010522887/article/details/141731878)\n\n      [腾讯混元大模型](https://cloud.tencent.com/document/api/1729/105701)\n\n29. 尝试兼容一下移动端，首先是 grid 固定 3 不行... 但是怎么说呢，感觉除非重新设计 ui，要求移动端和桌面同时显示的一套 ui，否则太难了吧...\n31. 关于待办事项项目，直接嵌入到当前项目中，代码分离即可！大项目本来就是各种小项目在架构层面的堆叠。\n33. 新增排序方式，默认推荐使用更新时间倒序排序，支持创建时间、标题、附件数量等排序方式（至少这解决了我之前删掉的全部笔记、最近编辑、有附件的筛选了，从功能上满足了）\n34. 上传的附件图片支持预览（其他文件暂时只能通过浏览器，后续尝试现在到 CWD 所在位置吧）\n\n       附件最大限制为 10MB，但是这样的话，节流器是不是应该考虑全面一点，还是说没必要？\n\n       但是大文件可以需要考虑的，毕竟目前的 view_file 是全部读取到内存中的（虽然我觉得，操作系统会处理吧？）\n\n35. 有点诡异啊，为什么我的软件启动后，8000 端口被我本地占用了，version 1.1.1 版本的软件我打开，依旧能找到这个端口？而且还覆盖了，通过浏览器访问8000 端口时，会访问我这个启动的软件的内容...注意，我启动的端口是 8001，看样子这个启动了多线程啊，应该是 `if __name__ in {\"__main__\", \"__mp_main__\"}` 的问题！\n\n\n40. nicegui 稍微复杂一点，还是太难受了。感觉除非去学一下前端，体验一下前端，不然闷头写 nicegui 是没有意义的！所以到此为止吧！今天是 2025-11-16 早上，我需要 16 17 18 三天学 go，总之 20 左右再考虑 python 和 nicegui 吧！我需要转向 go（中途可以花一点时间写 python 但是请主要是项目整理）\n41. 程序员，是需要不断在解决难题中才能提升的，所以归根结底，还是拿到需求写项目，所以还是要好好工作，最好琐事少一点（前期），注意这个琐事其实也是分阶段的，不同阶段对琐事的看法不一样。可能前期是琐事，经验丰富后发现，这些事情确实是必要的！\n43. 加个开屏动画（只希望能够监听到成功打开啊，不然这开屏动画毫无意义！）\n46. [sqlalchemy 的 create_engine 的 echo=True，如何重定向给 loguru.logger.debug](https://lxblog.com/qianwen/share?shareId=7411a579-4ec1-4f24-8cdc-65360474b6d4)\n49. 0 附件的情况下，直接设置不能点击查阅按钮不就得了！\n50. **done**搜索内容和筛选条件，在访问主页的时候，应该在 get 查询参数中携带！且需要按要求填充！（已通过 profile 的方式实现）\n52. 很多样式不满意可以去看基础 html css js 或者嵌入式 vue 等有没有解决方案呀！\n53. todo: 将笔记导出为文件，内容为标题和正文！文件位置由用户指定！\n54. 新增笔记页面删除附件的时候，因为会刷新页面，导致笔记消失了，绷不住。\n55. 新增笔记时，上次的附件保存才能查看！\n57. 标签插入和标签筛选，主要是标签插入，这个应该是动态的。\n       - 用户插入、删除？\n       - 标题提取，提取出来的不支持删除\n       - 标题提取在笔记保存的时候处理，旧数据不考虑兼容\n58. 笔记优先级及排序一定要提上日程，待办事项思考一下能否和笔记协同。毕竟 title 和 content 与待办事项可以对应！Note 表不修改也是可以实现的吧？\n\n       待办事项和笔记也可以形成多对一的关系~\n\n59. link 点击使用后端的 webbrower 打开！\n60. 推荐新增笔记页面也和编辑页面一样，支持自动增长！\n62. 使用介绍实现一个翻页功能如何，关于翻页，推荐用饥荒那种配色的翻页按钮，或者参考笔记本，MC 的那种笔记本，留言簿。\n63. 编辑和保存页面撤回之前弹窗没保存呢~\n64. 有办法放大 textarea 的字体吗，加个配置项也可以。\n65. textarea 每一行之间的间距不要默认，稍微大一点吧！textarea 被拖开的大小，其实我建议放到配置项里，这样一来，非常完美，等于实现了用户自动调节的功能！\n66. 希望可以实现图片预览和文本文件预览功能！二进制文件忽略！\n67. 新增笔记保存后，希望可以直接跳转到编辑页面\n\n\t  笔记详情页面似乎可以通过编辑页面跳转过去，而不是反过来，太麻烦了。\n\t\n\t  编辑页面本就可以直接看到内容，详情页面存在的意义不算大，或者新增一个编辑按钮...\n\n68. 为什么 \\t 没办法与 `12. 我` 这段话中的 `我` 字对对齐？\n69. 能否让保存页面的 textare 变成富文本编辑页面啊？django 插件就有一个，应该可以独立出来吧？\n     \n   \t  textarea 终究没办法太复杂！多去搜索搜索吧！\n\n70. 笔记系统可以借鉴一下知乎的页面呢？\n71. end 快捷键，自动拉到最下面（有textarea焦点的情况下，就是那个焦点吧）测试发现，默认最大页面 end 是能自动拉下去的！\n72. 列表视图的 card 太一般了，没有多少特别，黑白配色\n74. 保存时自动拉到最上面，感觉没必要了\n75. ui.markdown 太一般了，找找前端方案吧\n      \n      首先是 nicegui 能否原封不动[嵌入](https://lxblog.com/qianwen/share?shareId=ed5afbe9-505d-4c89-ab86-ce2310af1acd)，其次是能不能找到好用的组件。\n76. 查看和编辑页面附件部分占据空间实在太多，不合理\n77. 添加个置顶功能吧？优先级等等。反正感觉设计师很重要啊！不然只能我自己体验体验。\n78. 还是那句话，ui.markdown bug 太多！！！\n81. 笔记太多，阅读起来也麻烦啊，来个列表视图-标题视图吧！然后点击跳转过去！\n\n\t**好好思考一下怎么表达页面！**\n\n\ttodo: ctrl end 和 end\n\n82. **重点**解决 ui.page 多页面切换的延迟问题（可以尝试 body.clear() 的方式）\n83. 可以参考一下 obsidian\n84. 优先级！！！提上日程？或者单纯的置顶也可以的！比如左上角有个箭头。\n85. 实现语音输入并转文字！！！\n86. 右键无法实现的话，用 contextmenu 吧。。。\n87. 图片预览也希望可以提上日程。\n88. 草稿\n89. 一行超出三个元素，就改用 menu 吧！可以藏很多，而且也可以有自己的图标！\n\n\t 比如：加个选项，去 ui.rating 评分！虽然我记得还有其他的吧？\n90. 标题视图可以用 ui.link，除此以外，去了解点设计师知识吧，上次知乎刷到了的\n91. 摘要卡片的正文部分希望可以用 hover 显示前 X 个字符，这样看的更多了！希望可以支持换行呢~\n92. 考虑一下笔记过多的情况，比如可以加个选项：默认显示最近 X 个月 0.Y 的笔记（让用户控制数量）\n93. 是否考虑增加个回收站？再新增一个 is_delete 字段就行，然后清理工具定期也去清理那个回收站~，这个里面最难的依旧是字段筛选功能了，\n      目前有个想法，自然是 Service 类新增一个抽象方法表达过滤字段，默认查询肯定是数据库存在就算存在，存在这个抽象方法的实现时，\n\t  任何查询都要调用这个方法去填充 stmt！\n94. nicegui 有自带的分页组件\n\n\t ```python\n\tfrom nicegui import ui\n\n\tfrom nicegui import ui\n\n\tp = ui.pagination(1, 5, direction_links=True)\n\tui.label().bind_text_from(p, 'value', lambda v: f'Page {v}')\n\n\tui.run()\n\t```\n95. tab 实现的不好，多行的情况下考虑如何兼容呢？而且 tab 似乎破坏了 textarea 自带的撤回功能（建议找一下 textarea 有没有现成的 tab 啊）\n96. 使用高级通知 ui.notification 实现 ai 生成功能！！！\n97. 使用 json 编辑器去实现用户自定义选项！\n98. **急**nicegui 官网案例，全部运行一遍！！！！！！闭门造车不可取！虽然也不能那样说，但是了解的越多越好！\n99. 列表视图哪里添加一个导出按钮，直接把 Note 表当前页面除附件字段都导出为 json 文件\n100. 建议 ai 问答页面，我直接问 ai 就行了，不需要打开软件，也不需要深度思考，只需要提供一些能力。本地先试试愚蠢的 qwen2.5:0.5b！（其实我还想试试这个规模大小的 ai 是否可以嵌入到我的程序中？这么一想，未来确实有可能出现牛掰的人工智能啊，科幻小说里面那样！）\n101. 查看笔记详情应该放在预览功能里面！编辑就编辑，编辑完直接预览就好了，何必多此一举进入一个单独的预览页面？\n102. textarea 要不改成 codemirror ？这个是封装的 js 工具，专门输代码用的，感觉可以啊！预览的时候用 ui.markdown 呗？然后预览页面切换 label 和 markdown（用哪个单项开关来切换）\n103. 应该增加置顶和放在非指定第一位的选项，置顶用来排优先级，放在第一位用来提升优先级。\n",
+        "id": 23,
+        "created_at": "2025-11-14 14:58:11.379",
+        "updated_at": "2025-11-19 08:37:17.911",
+        "note_type": "default"
+    },
+    {
+        "title": "【抖音】Figma集成IDE提升设计能力",
+        "content": "\n\ntrae 国际版 solo 模式将 figma 嵌入进来，可以直接通过 trae 内置浏览器登陆 figma，然后选中设计页面后，可以直接发送给 trae 让其生成前端代码（主要是 react）\n\n这个感觉很好用，而且非常适合前端二把手。nicegui 的功能还是太有限了。当然，肯定依旧需要前端知识。\n\n4.12 SlP:/ K@w.FH 04/19 设计能力再提升！Figma搬进IDE # 编程 # trae # 程序员# ai新星计划 # 科技  https://v.douyin.com/LxUD1Dj4YyE/ 复制此链接，打开Dou音搜索，直接观看视频！\n\n",
+        "id": 24,
+        "created_at": "2025-11-14 15:28:33.486",
+        "updated_at": "2025-11-17 14:08:22.360",
+        "note_type": "default"
+    },
+    {
+        "title": "【抖音】Claude+GLM：国内程序员AI生产力组合",
+        "content": "7.10 hod:/ 11/25 F@H.ic 程序员AI生产力组合，Claude+GLM太适合国内程序员了 # 程序员 # ClaudeCode # GLM # 编程 # 智谱  https://v.douyin.com/eW5bdKivRRk/ 复制此链接，打开Dou音搜索，直接观看视频！",
+        "id": 25,
+        "created_at": "2025-11-14 16:36:49.320",
+        "updated_at": "2025-11-14 16:36:49.320",
+        "note_type": "default"
+    },
+    {
+        "title": "【饥荒联机版】基地推荐",
+        "content": " ",
+        "id": 29,
+        "created_at": "2025-11-14 19:52:32.213",
+        "updated_at": "2025-11-14 20:15:37.612",
+        "note_type": "default"
+    },
+    {
+        "title": "ngrok 使用",
+        "content": "```bash\nngrok config add-authtoken {your_authtoken}\n```\nauthtoken 前往 ngrok 官网获取（https://dashboard.ngrok.com）\n\n\n\n\n\n\n\n",
+        "id": 31,
+        "created_at": "2025-11-15 00:27:45.625",
+        "updated_at": "2025-11-15 00:27:45.625",
+        "note_type": "default"
+    },
+    {
+        "title": "石墨文档前端参考",
+        "content": "1. 上传附件限制了 10MB\n2. 前端空间如何利用的可以[参考参考](https://shimo.im)\n",
+        "id": 33,
+        "created_at": "2025-11-15 14:01:36.772",
+        "updated_at": "2025-11-15 14:02:17.976",
+        "note_type": "default"
+    },
+    {
+        "title": "【待办】【抖音】SSH终端面板内置浏览器，支持外网访问",
+        "content": "0.79 06/28 QxF:/ N@J.Ii 一个在服务器内置浏览器的ssh终端面板，还能一秒访问外网？ # 程序员 # 计算机 # 软件开发 # 运维 # 服务器  https://v.douyin.com/JD338nLWRGk/ 复制此链接，打开Dou音搜索，直接观看视频！\n\n\n笔记额外属性需要补充，比如处理优先级（用那个五颗星的组件吧！）\n\n排序的话，先排优先级，再排其他的！\n\n额外来个截止日期如何呢？\n\n\n",
+        "id": 34,
+        "created_at": "2025-11-15 15:00:15.320",
+        "updated_at": "2025-11-17 14:12:27.804",
+        "note_type": "default"
+    },
+    {
+        "title": "七天用Go从零实现系列 - 分布式缓存 - GeeCache",
+        "content": "```txt\ngeektutu发表于超过 5 年前\n@1129569290 我觉得实习生的话，项目经验是次要的，核心还是基础功底要扎实。比如leetcode至少medium的题都能搞定。如果你对分布式感兴趣，可以着重去了解分布式的基础算法，比如MapReduce，Raft等的实现，这个教程中的 LRU，一致性Hash 也属于这一类。\n```\n\n",
+        "id": 37,
+        "created_at": "2025-11-15 20:15:25.092",
+        "updated_at": "2025-11-15 20:15:25.092",
+        "note_type": "default"
+    },
+    {
+        "title": "【待办】待办事项 ui 开发",
+        "content": "直接集成到当前页面中，附件上传还是要优化一下！\n\n默认输入的 textarea 高度也得修改，宽一点好！\n",
+        "id": 39,
+        "created_at": "2025-11-16 10:32:22.621",
+        "updated_at": "2025-11-16 15:13:06.605",
+        "note_type": "default"
+    },
+    {
+        "title": "【抖音】网易开源低代码网页构建器Tango：支持多页面设计，实时生成前端代码",
+        "content": "\ngithub 链接：[NetEase/tango](https://github.com/NetEase/tango)\n\n文档网站：https://netease.github.io/tango-site/\n\nPlayground 应用：[Tango Playground](https://tango-demo.musicfe.com/designer/)\n\n\n0.07 tRx:/ 06/15 W@z.gO 网易开源的低代码网页构建器，支持多页面同时设计/切换 实时生成前端项目代码 # 前端 # 程序员 # 软件开发 # 编程 # 干货分享  https://v.douyin.com/ILJQbRmUpEE/ 复制此链接，打开Dou音搜索，直接观看视频！\n\n",
+        "id": 42,
+        "created_at": "2025-11-16 13:22:45.576",
+        "updated_at": "2025-11-17 14:08:00.022",
+        "note_type": "default"
+    },
+    {
+        "title": "Lovart 工具，国外的，AI 与 PS",
+        "content": "9.97 jpQ:/ h@b.nQ 12/17 用它1分钟，PS原地卸载，不用源文件也能编辑图片。 # ai # p图改字 # ai新星计划 # 设计 # Lovart  https://v.douyin.com/hmzpjIwXnJc/ 复制此链接，打开Dou音搜索，直接观看视频！\n\n[Lovart | 全球首个设计智能体](https://www.lovart.ai/zh/home)\n\n但是需要谷歌邮箱或 apple 登录，而且每月 16 美元，太贵了。",
+        "id": 43,
+        "created_at": "2025-11-16 16:22:39.512",
+        "updated_at": "2025-11-16 16:38:27.813",
+        "note_type": "default"
+    },
+    {
+        "title": "【Pixso AI】帮我设计一款笔记管理系统，你只需要关注笔记的编辑页面、详情页面",
+        "content": " [参考链接](https://ai.pixso.cn/app/design?session_id=274fb23a-aea8-4258-a2ab-a0ae242db46b)",
+        "id": 44,
+        "created_at": "2025-11-16 16:48:10.427",
+        "updated_at": "2025-11-16 16:48:34.209",
+        "note_type": "default"
+    },
+    {
+        "title": "【知乎】一图妙解 Vue3",
+        "content": "看着图，npm create vue，勾上 jsx，将 Main.vue 改为 Main.tsx，直接开始写，有不懂的问 AI，这个速度才最快，文档历史负担太重了\n\n---\n\n提醒一下，Vue3 理解后，上诉一张图就能秒掉，易用性直接拉满。\n\n配合 Vueuse\n\n效率高到爆炸，作为熟练的 React 开发者告诉你 ——\n\nVue3 只和 ReScript 开发的 React 有来有回，秒杀 ts React！\n\n而且 API 面积是真的小，功能是真的多，直冲脑门儿~\n\nReact 开发者用过都说好，是最好的前端框架【笑脸】~\n\n重复功能 API 多？兼容老用户啊朋友！\n\n老用户怎么还不走？这样让我们 Vue3 如何快乐地玩耍？\n\n前端因为 Vue3 ，React ，ng\n的这波 SOA\n\n更新，难度骤降，成为了夕阳职业。\n\n但是难度骤降应该能腾出空间让我们去玩全栈。\n\n你怎么还在 Vue2？更有在 Vue3 里写 options 的神人，只为一个“会 Vue3”的名号！\n\n朋友，mixin 都没了，你玩 options 不硌得慌？\n\n菜是原罪，你写 Vue3，我们 React，Vue3，ng 一家亲，共同抵抗资本家！\n\n你写 Vue2？别恬列开发者之列，谢谢~\n\n连编程能力都没被完全释放的过渡时代开发者，你跟我们 Vue3，nodejs，java，golang 开发者有共同语言么？没有凭什么说是我们这个行业的？\n\n---\n\n  [为什么 Vue 3 设计了那么多重复功能的 API？](https://www.zhihu.com/question/1933969813643989014/answer/1972367854700594832)",
+        "id": 45,
+        "created_at": "2025-11-16 17:03:13.152",
+        "updated_at": "2025-11-17 14:11:48.665",
+        "note_type": "default"
+    },
+    {
+        "title": "【知乎】掌握Vue高级前端需理解MVVM核心，分离ViewModel与Model逻辑。",
+        "content": "Vue使用到哪种程度才算高级前端？ - zhoubuning的回答 - 知乎\n\nhttps://www.zhihu.com/question/426310955/answer/1928466506322257080\n\n---\n\n如果还在琢磨 vue 各种接口，那就别想着高级前端了。\n\nMVVM\n的核心是通过 VM 作为一个中间层将 GUI 的 View 层代码逻辑转变为和 GUI 无关的 Model\n\n层代码。\n\n所以先争取做到能够不把 ViewModel\n和 Model 混淆在一起写，再来谈高级前端了。",
+        "id": 48,
+        "created_at": "2025-11-16 17:40:39.762",
+        "updated_at": "2025-11-17 14:11:41.207",
+        "note_type": "default"
+    },
+    {
+        "title": "【知乎】敲代码真的很爽吗？",
+        "content": "敲代码本身并不爽\n\n你得有需求，而且需求不难，你踮踮脚尖就能够到，然后正巧你知道怎么用代码实现这些需求，这时候你写代码就会很爽了\n\n当然，需求最好是你自己的，因为甲方客户的需求会让你想要撞墙\n\n说一个易懂的吧\n\n假如你喜欢看小说，但是苦于每一章都要充钱，然后这个小说还有1000+章，算下来你要花好多好多钱\n\n看了一下你手机里绿色和蓝色的软件，发现余额只够这个月的伙食了，但是还想看怎么办？上某度或者某歌发现好像有盗版的书籍，于是就到盗版网站看了\n\n盗版网站有一个什么问题呢，网站两边有很多新澳门广告，你也不想“不小心”点到这些广告吧，或者不想在看的时候有人看到这些广告以为你在干什么事情吧\n\n于是你就想要复制整本小说到记事本，这样就可以无干扰阅读了（肯定会有软件可以导入txt文件来看小说的）\n\n说干就干，打开一个记事本，然后打开网站，用鼠标拖动选中一章小说（不会有人在手机复制吧），复制，然后到记事本粘贴。这很简单，再重复 999 次就可以复制完啦\n\n随着时间的流逝，你花3个小时复制了450章了，但是你好累，就看个小说而已，咋就变成了搬运工了呢\n\n于是你就想，要是有人帮你复制就好了，而且越多人越好，这样你就能很快复制完所有的章节了\n\n需求就来了，假如凑巧你会python（也可以用别的语言，这个相比来说更简单），然后还了解一些网页的工作方式和网络请求的知识，你就可以写一个爬虫，假设这个网站没有乱七八糟的认证之类的，你可以花1个小时编写和调试代码（熟练的话可以更快），然后用10分钟运行代码（可能更快），接下来就把那些txt导入到看小说的软件慢慢看就可以啦\n\n\n当然，除了小说，还可以是视频之类的你感兴趣的东西，都可以通过爬虫爬下来\n\n\n除了爬虫，还可以是别的应用，这就看需求了\n\n---\n\n敲代码真的很爽吗？ - PenGoFox的回答 - 知乎\nhttps://www.zhihu.com/question/1939831533549630546/answer/1973385007889397185",
+        "id": 49,
+        "created_at": "2025-11-16 18:01:02.877",
+        "updated_at": "2025-11-16 18:03:13.893",
+        "note_type": "default"
+    },
+    {
+        "title": "【知乎】你们编码是先写代码还是先写注释?",
+        "content": "之前是写大文档，然后写实现。个人写代码就这水平。后来发现，写鸡毛代码注释和文档。\n\n现在都是：\n\n不要写代码，给我写需求和控制文档\n\n，目录，服务，建立原始的文件，不要写任何代码，在文件头写本文件是干什么的，谁调用你你调用谁。\n\n每一步给我写到progress里面，写完后给我更新plan和detail。\n\n点数说多的话就执行一次文档对齐，并给我方案。\n\n然后就是一溜的继续继续。\n\n---\n\n你们编码是先写代码还是先写注释? - 牛死了还牛的不行的回答 - 知乎\nhttps://www.zhihu.com/question/1914608529978942202/answer/1973184065386590834\n\n---\n\nhttps://www.zhihu.com/question/1914608529978942202",
+        "id": 50,
+        "created_at": "2025-11-16 18:11:02.792",
+        "updated_at": "2025-11-16 18:11:24.541",
+        "note_type": "default"
+    },
+    {
+        "title": "【知乎】前端如何设计网页？",
+        "content": "https://www.zhihu.com/question/603988389/answer/1916150003677769796\n\n---\n\n前端如何设计网页？ - 西门吹牛的回答 - 知乎\nhttps://www.zhihu.com/question/603988389/answer/3053019706\n\n使用element ui或者andt design，主题就用默认得就好了，记住几个口诀：padding margin取值 8px 16px 24px，font-size：12px 14px 16px，color：#333 #666 #999 就行了\n\n\n<br>\n\n设计三大宝：透明 阴影 加圆角\n\n---\n\n前端如何设计网页？ - Snowflyt的回答 - 知乎\nhttps://www.zhihu.com/question/603988389/answer/3484730945",
+        "id": 52,
+        "created_at": "2025-11-16 18:32:34.984",
+        "updated_at": "2025-11-16 18:35:15.738",
+        "note_type": "default"
+    },
+    {
+        "title": "抖音视频：一口气看完《埃罗芒阿老师》动漫解说",
+        "content": "1. https://v.douyin.com/sHomMR4F5wE/",
+        "id": 54,
+        "created_at": "2025-11-17 14:03:00.899",
+        "updated_at": "2025-11-17 14:03:00.899",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "Python打包exe文件过大的解决方法",
+        "content": "1. https://www.zhihu.com/question/281858271",
+        "id": 55,
+        "created_at": "2025-11-17 14:03:46.158",
+        "updated_at": "2025-11-17 14:03:46.158",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "国产网页救活神器：GitHub插件推荐",
+        "content": "1. https://v.douyin.com/vqcayD_stsY/",
+        "id": 56,
+        "created_at": "2025-11-17 14:04:20.960",
+        "updated_at": "2025-11-17 14:04:20.960",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "Markdown简介及其流行原因",
+        "content": "1. https://www.zhihu.com/question/14053938427/answer/1973558020513493151",
+        "id": 57,
+        "created_at": "2025-11-17 14:04:56.167",
+        "updated_at": "2025-11-17 14:04:56.167",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "桥接模式：分离抽象与实现，便于独立扩展",
+        "content": "1. https://www.zhihu.com/question/571633266/answer/1972408317008675486",
+        "id": 58,
+        "created_at": "2025-11-17 14:06:12.896",
+        "updated_at": "2025-11-17 14:06:12.896",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "AI工具几秒克隆网站：开源黑科技",
+        "content": "1. https://v.douyin.com/JpdZNwPNqq0/",
+        "id": 59,
+        "created_at": "2025-11-17 14:06:31.309",
+        "updated_at": "2025-11-17 14:06:31.309",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "Obsidian笔记工具：数据安全、界面流畅、AI集成",
+        "content": "1. https://v.douyin.com/fGXMTuwyDz8/",
+        "id": 60,
+        "created_at": "2025-11-17 14:07:01.095",
+        "updated_at": "2025-11-17 14:07:01.095",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "3分钟搭建开源AI知识库，告别文档混乱",
+        "content": "1. https://v.douyin.com/shUqCEyq8XI/",
+        "id": 61,
+        "created_at": "2025-11-17 14:07:37.983",
+        "updated_at": "2025-11-17 14:07:37.983",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "快速上手飞书多维表格：系统管理与使用指南",
+        "content": "1. https://www.feishu.cn/hc/zh-CN/articles/697278684206-%E5%BF%AB%E9%80%9F%E4%B8%8A%E6%89%8B%E5%A4%9A%E7%BB%B4%E8%A1%A8%E6%A0%BC",
+        "id": 62,
+        "created_at": "2025-11-17 14:08:41.236",
+        "updated_at": "2025-11-17 14:08:41.236",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "CodeBuddy推出Skill功能，AI编程工具实现重复工作一劳永逸",
+        "content": "1. https://v.douyin.com/ZV9rjD8PkeA/",
+        "id": 63,
+        "created_at": "2025-11-17 14:08:53.727",
+        "updated_at": "2025-11-17 14:08:53.727",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "字节跳动AI编程工具TRAE发布SOLO正式版，支持复杂代码库和多任务并行，限时免费。",
+        "content": "1. https://v.douyin.com/P6xOXWZoKLc/",
+        "id": 64,
+        "created_at": "2025-11-17 14:09:05.499",
+        "updated_at": "2025-11-17 14:09:05.499",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "认错临时女友是公司新总裁",
+        "content": "1. https://v.douyin.com/IMkTtKa3dKc/",
+        "id": 65,
+        "created_at": "2025-11-17 14:09:32.638",
+        "updated_at": "2025-11-17 14:09:32.638",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "AI生成特效视频工具分享",
+        "content": "1. https://v.douyin.com/5XPqYWUZtC4/",
+        "id": 66,
+        "created_at": "2025-11-17 14:09:46.419",
+        "updated_at": "2025-11-17 14:09:46.419",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "知识库索引的必要性与建立方法",
+        "content": "1. https://v.douyin.com/9bbWvEvHzCI/",
+        "id": 67,
+        "created_at": "2025-11-17 14:10:03.519",
+        "updated_at": "2025-11-17 14:10:03.519",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "开源低代码建站系统、大专女生3D建模技能、AI自动操作电脑应用",
+        "content": "1. https://v.douyin.com/zte284cPY0w/\n2. https://v.douyin.com/karco1pbcHQ/\n3. https://v.douyin.com/LYeNXnIbqiQ/",
+        "id": 68,
+        "created_at": "2025-11-17 14:10:58.400",
+        "updated_at": "2025-11-17 14:10:58.400",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "集成第三方富文本编辑器与自定义Vue组件",
+        "content": "### 集成第三方富文本编辑器（如 Quill、TinyMCE）\n\n```python\nfrom nicegui import ui\n\nhtml_content = '''\n<div id=\"editor\" style=\"height: 300px;\"></div>\n<script src=\"https://cdn.quilljs.com/1.3.6/quill.js\"></script>\n<link href=\"https://cdn.quilljs.com/1.3.6/quill.snow.css\" rel=\"stylesheet\">\n<script>\n  var quill = new Quill('#editor', {\n    theme: 'snow'\n  });\n  // 可通过 window.noteContent = () => quill.root.innerHTML; 供 Python 调用\n</script>\n'''\n\nui.html(html_content)\nui.button('Get Content', on_click=lambda: ui.run_javascript('console.log(document.querySelector(\".ql-editor\").innerHTML);'))\n```\n\n\n### 自定义 Vue 组件（高级）\n\nNiceGUI 支持通过 ui.add_component 注册 Vue 组件，可封装任意前端编辑器（如 Tiptap、Monaco Editor），但开发成本较高。\n\n",
+        "id": 69,
+        "created_at": "2025-11-17 14:36:37.228",
+        "updated_at": "2025-11-17 14:56:48.243",
+        "note_type": "default"
+    },
+    {
+        "title": "九行代码实现图像识别桌面应用",
+        "content": "1. https://v.douyin.com/fcqc03XTDUQ/",
+        "id": 70,
+        "created_at": "2025-11-17 15:38:58.791",
+        "updated_at": "2025-11-17 15:38:58.791",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "PaddleX 3.0 是基于飞桨框架构建的低代码开发工具，它集成了众多开箱即用的预训练模型，可以实现模型从训练到推理的全流程开发，支持国内外多款主流硬件，助力AI 开发者进行产业实践。",
+        "content": "1. https://paddlepaddle.github.io/PaddleX/latest/",
+        "id": 71,
+        "created_at": "2025-11-17 15:49:20.248",
+        "updated_at": "2025-11-17 15:49:20.248",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "【抖音】AI生成女生背影照片引发热议，作者道歉并解释初衷",
+        "content": "不要参考之前的图片，重新创建一个平庸的iPhone拍摄的图片，略带动态模糊，角度尴尬，构图拙劣，整体效果平庸至极就像无意中被抓拍的感觉。被拍摄的是一个女生的背影，女生脸型是瓜子脸，面容比较中性化，发型鲻鱼头，中长发，黑发。五官精致，双眼皮，丹凤眼，没有化妆，素颜，穿着一件黑色卫衣，面无表情，少年感十足，身材修长，背景一个夜晚的江边\n\n9.99 07/23 jpq:/ U@y.gO # 智斗 我对不起大家。我的本意是去骗我前女友，没想着骗别人，所以你们的评论私信我都没有回复，也没有加任何人的联系方式。并且我还弄了一个微信小号也是在小号朋友圈发这些照片，也是为了进一步让前女友相信我有一个确确实实存在的现女友。为了不在她面前露出破绽我是煞费苦心，这个号我也不知道为什么会有那么多人看，看的人多了就会有看出来是ai的，我只能把他们光速删评论加毕业，不然被我前女友看到了就丢脸丢大了，还好她并没有看出来，最后，也是有点感慨，其实我写的那些随笔，如果不是因为这个ai的照片如此权威，应该不会有人看完，果然验证了那句话，没有美丽的皮囊不会有人去了解你的灵魂是否有趣，不过说实话，我有点喜欢上我生成这个人物了，接下来可能还会发一点生成的照片写写随笔吧，不想看的可以取关了，再次跟大家说声抱歉。  https://v.douyin.com/P9wuXodLOqM/ 复制此链接，打开Dou音搜索，直接观看视频！",
+        "id": 72,
+        "created_at": "2025-11-17 16:34:45.514",
+        "updated_at": "2025-11-17 16:34:59.003",
+        "note_type": "default"
+    },
+    {
+        "title": "GitHub项目阅读神器：一键解析英文开源项目为中文深度解析",
+        "content": "1. https://v.douyin.com/QghPqzHrn8g/",
+        "id": 73,
+        "created_at": "2025-11-17 16:44:41.091",
+        "updated_at": "2025-11-17 16:44:41.091",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "Claude code项目规划：从零到一开发教程（VSCode中使用）",
+        "content": "1. https://v.douyin.com/Mf59xDTi-II/\n\n补充文本：\n简单需求txt ai转复杂 再ai来",
+        "id": 74,
+        "created_at": "2025-11-17 16:56:55.740",
+        "updated_at": "2025-11-17 16:57:48.073",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "GitHub交互式学习：快速掌握编程语言语法",
+        "content": "1. https://v.douyin.com/oFa7BLXlgOU/",
+        "id": 75,
+        "created_at": "2025-11-17 17:06:19.370",
+        "updated_at": "2025-11-17 17:06:19.370",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "Linux可视化运维平台：打破常规的创新工具",
+        "content": "1. https://v.douyin.com/ZNnJE1IY_bk/",
+        "id": 76,
+        "created_at": "2025-11-17 17:14:50.257",
+        "updated_at": "2025-11-17 17:14:50.257",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "【草稿】",
+        "content": "def show_file_dialog():\n    # [在 native 模式下改用系统对话框](https://lxblog.com/qianwen/share?shareId=429d4d1b-f53a-4ee0-83d9-700b6cdd5956]\n    # 必须判断是 native 且本地！（localhost/127.0.0.1）\n    # 本地桌面应用可以做很多事情！\n    import tkinter as tk\n    from tkinter import filedialog\n\n    title = ui.input(label=\"标题\", value=\"默认标题\")\n    content = ui.textarea(label=\"内容\", value=\"这里是正文内容...\")\n\n    def save_file_native():\n        # 创建隐藏的 Tk 窗口\n        root = tk.Tk()\n        root.withdraw()\n        root.attributes(\"-topmost\", True)  # 置顶，避免被盖住\n        file_path = filedialog.asksaveasfilename(\n            title=\"保存文件\",\n            defaultextension=\".txt\",\n            filetypes=[(\"文本文件\", \"*.txt\"), (\"所有文件\", \"*.*\")]\n        )\n        root.destroy()\n\n        if file_path:\n            try:\n                with open(file_path, \"w\", encoding=\"utf-8\") as f:\n                    f.write(f\"{title.value}\\n\\n{content.value}\")\n                ui.notify(f\"已保存到：{os.path.basename(file_path)}\", type=\"positive\")\n            except Exception as e:\n                ui.notify(f\"保存失败：{e}\", type=\"negative\")\n\n    # 这个不错啊，可以参考，左侧命名随意，右侧是实际含义\n    export_handler = save_file_native\n\n    with ui.button(icon=\"menu\"):\n        with ui.menu() as menu:\n            ui.menu_item(\"导出为文件\", on_click=export_handler)",
+        "id": 77,
+        "created_at": "2025-11-17 17:57:34.817",
+        "updated_at": "2025-11-17 17:57:34.817",
+        "note_type": "default"
+    },
+    {
+        "title": "nicegui 开发之 tailwind css 记录",
+        "content": "**限制文本宽度并启用省略号或自动换行**\n\n单行省略（推荐用于标题）：\n```python\nui.label(note.title).classes(\"font-semibold text-lg flex-1 truncate\") # truncate\n```\n\n多行截断或自动换行（适用于摘要）:\n```python\nui.label(summary).classes(\"text-sm text-gray-600 mt-1 line-clamp-2 break-words\") # line-clamp-2 break-words\n```\n\n\n**flex-1 让该元素在 Flex 容器中占据可用的剩余空间**\n",
+        "id": 78,
+        "created_at": "2025-11-18 07:26:19.460",
+        "updated_at": "2025-11-18 16:30:26.846",
+        "note_type": "default"
+    },
+    {
+        "title": "v1.1.3 软件版本后的感想",
+        "content": "[note] v1.1.3 版已完成，本文件是在它之后开发的。开始考虑页面样式和代码逻辑如何组织了。\n\n1. **ui 界面通过 Pixso AI 生成并截图发送给千问**：`nicegui如何实现？左侧列表右侧正文，类似 obsidian 那样`\n2. 该界面对目前的我而言，还算理想，比我第一版扣子生成的好多了（AI 是炼金术吧、提示词是咒语吧）\n3. **只需要使用 nicegui 基础组件和 tailwind css**（需要系统学习）即可实现不错的页面了！前端开发美观才是关键之一！\n4. **数据库表设计**也是可以让 ai 设计的，但是终究需要优秀的提示词\n5. 可以尝试让 **ai 根据你的需求生成提示词**，你再去问 ai 让它生成设计图/网页\n6. 直接找网上的 ui 界面（单一组件元素也可以）**让支持多模态的 ai 分析并生成**（比如用 tailwind css 生成）\n7. **审美不行**，建议任何功能，优先找 nicegui 自带组件，然后找 quasar，接着让 ai 找现成方案，最后才是让 ai 自己写。\n8. 学习学习设计师思维呢？\n9. 要劳逸结合，任务只要记得去完成就行了，不要一天蒙头干！多见见世面，换种思考。比如：今天（2025-11-18）发给 ai 设计图，让它写，然后我微调，很好的（虽然主要主要原因是 ai 设计的前端图不错，所以啊，前端真就不如后端，虽然后端像是数据库管理员一样，但是后端绝对比前端舒服）！\n10. ",
+        "id": 79,
+        "created_at": "2025-11-18 07:26:25.277",
+        "updated_at": "2025-11-18 08:30:20.100",
+        "note_type": "default"
+    },
+    {
+        "title": "桌面应用全用 px 的适用场景总结",
+        "content": "假如我开发一个桌面应用，这个应用的大小几乎就那么大，我完全用 px 来确定元素位置，不同大小的电脑屏幕上，是否差不多的观感？\n\nhttps://lxblog.com/qianwen/share?shareId=b8159e42-7473-4bdd-865a-cd70a9826a28\n\n🛠️ 什么时候可以“放心全用 px”？\n|场景|\t是否推荐全用 px|\n| -------- | -------- |\n|Electron 桌面应用\t|✅ 非常合适|\n|内部管理系统（仅桌面访问）|\t✅ 合适|\n|设计工具（如 Figma 类 UI）|\t✅ 合适|\n|需要支持平板/手机\t|❌ 不推荐\n|用户可能用超小屏幕（<1280px）|\t⚠️ 要加 max-width 保护|\n\n\n\n| Tailwind 类 | 对应值（rem） | 对应像素（px，默认 1rem = 16px） |\n|-------------|---------------|-------------------------------|\n| w-0         | 0             | 0px                           |\n| w-1         | 0.25          | 4px                           |\n| w-2         | 0.5           | 8px                           |\n| w-3         | 0.75          | 12px                          |\n| w-4         | 1             | 16px                          |\n| w-5         | 1.25          | 20px                          |\n| w-6         | 1.5           | 24px                          |\n| w-8         | 2             | 32px                          |\n| w-10        | 2.5           | 40px                          |\n| w-12        | 3             | 48px                          |\n| w-16        | 4             | 64px                          |\n| w-20        | 5             | 80px                          |\n| w-24        | 6             | 96px                          |\n| w-32        | 8             | 128px                         |\n| w-40        | 10            | 160px                         |\n| w-48        | 12            | 192px                         |\n| w-56        | 14            | 224px                         |\n| w-64        | 16            | 256px                         |\n| w-72        | 18            | 288px                         |\n| w-80        | 20            | 320px                         |\n\n",
+        "id": 80,
+        "created_at": "2025-11-18 16:41:47.073",
+        "updated_at": "2025-11-18 16:55:44.249",
+        "note_type": "default"
+    },
+    {
+        "title": "使用 Unicode 字体图标替代图标资源",
+        "content": "```python\n                        # todo: Unicode 字体图标足以啊！压根不需要找图标了，我的天，好东西\n                        ui.button(\"💾 保存\", color=\"positive\").classes(\"mr-2\")\n                        ui.button(\"🗑️ 删除\", color=\"negative\").classes(\"mr-2\")\n                        ui.button(\"👁️ 预览\", color=\"primary\")\n```",
+        "id": 81,
+        "created_at": "2025-11-18 18:43:11.917",
+        "updated_at": "2025-11-18 18:43:25.040",
+        "note_type": "default"
+    },
+    {
+        "title": "【知乎】前端工程师速成指南：1个月HTML/CSS/JS基础，2个月框架实战，1.5个月工程化与高壁垒项目，强调上线与文档。",
+        "content": "稍微看了一下，前端好麻烦，先放一边吧，顶多先学个 tailwind css\n\n我去！tailwind css 是原子 css 的意思，每个 class 代表一个 css style ！！！（虽然可能某个 class 是多个 class 或 style 组合）\n\ntailwind css 可以让我们只书写 HTML 代码，无需书写 css！可以只用 HTML 代码实现任何 UI 设计！（多封装不就得了，归根结底还是 css 基础！js 真没啥，对我而言，又不是专业前端，无所谓的！）\n\n系统了解一下 css 的基础应该就懂如何设计前端了！\n\n---\n基础速通（1个月）HTML/CSS：🔹 死磕 flex布局游戏（flexboxfroggy.com） + Grid花园（cssgridgarden.com）🔹 每天仿写1个 codepen.io 炫酷效果（只抄CSS，不准用JS！）JavaScript：🔹 freeCodeCamp 的JS算法部分刷穿 → 重点练 闭包/Promise/原型链🔹 用 JS30（JavaScript30.com） 每天1个小项目（比如原生JS实现拖拽）框架猛攻（2个月）任选一条路：🔸 Vue路线： Vue3官网教程 → Vue Mastery 付费课（重点学Pinia+Vite）🔸 React路线： React Beta Docs → EpicReact.dev 实战（啃透Hooks+Zustand）工程化实战（1.5个月）Git硬核操作：🔹 在GitHub建仓库 → 故意制造 冲突/分支合并问题 → 自己解决构建工具：🔹 用 Vite 从零搭项目（配ESLint/Prettier/环境变量）🔹 拆解 Webpack5配置（搞懂Loader/Plugin机制）性能优化：🔹 用 Lighthouse 给项目打分 → 死磕到90+分（压缩/懒加载/CDN）高壁垒项目（1.5个月）做能吹牛的项目：🔸 可视化方向： 用 Three.js+Echarts 做疫情实时3D地图🔸 跨端方向： 用 Taro 开发小红书同款瀑布流App 核心心法：💥 项目必须上线！买域名+部署Vercel（简历直接甩链接）💥 写 技术设计文档 放GitHub（面试官跪着看）低代码突围：🔸 钉钉宜搭/腾讯微搭 → 快速搭后台系统，理解业务逻辑调试核武器：🔸 Chrome DevTools → 性能分析/内存泄漏定位🔸 React DevTools Beta → 看透组件渲染链路\n---\n这是前端工程师进步最快的方式:没有之一 - 小夏的文章 - 知乎\nhttps://zhuanlan.zhihu.com/p/1973764963567939922！",
+        "id": 82,
+        "created_at": "2025-11-18 19:01:47.331",
+        "updated_at": "2025-11-18 19:22:11.651",
+        "note_type": "default"
+    },
+    {
+        "title": "编程、英语与数学：三条永无止境的学习之路",
+        "content": "编程，英语和数学。这三个是基本上都是不归路。\n\n先是英语：\n\n    我在2017年学完新概念英语\n\n以后，发现新概念英语只是一个可以在一年半的时间里，让我的单词量和阅读水平从四级提高到托福的教程。等我学完了以后，还有漫漫长路等着我呢？\nGRE单词要背，长难句分析要做。数不清的题目。基于英语的汗牛充栋的文学作品，科技文章。VOA，BBC的广播。Science网站。经济学人，纽约客杂志\n\n    。\n    从四级提高到托福的这条河流的航行只是我英语学习长路中的一条小溪。当我学完新概念英语这记小舟，驶出英语学习的河流。等待我的是像太平洋一样浩瀚无垠的英语世界。\n\n之后是编程：\n\n    你只要学会了C和C++\n\n。。你的面前就是一个浩如烟海的代码世界。。操作系统，编译器，通信协议栈，游戏引擎，光追引擎，高性能数据库\n\n    。\n    这是一个你一生都无法穷尽的世界。你就像一个勇敢的水手，驾驶着你手头那个破笔记本电脑，遨游在代码的海洋中，你会乐趣无穷。。\n    不管你是否承认，代码生成的软件已经遍布你的身边。除非你是住在深山老林的原始人，或者是吃饱等死的所谓普通人。你都无法摆脱软件。\n    遨游在代码的海洋里，不仅让你和这个世界一起前进，还能让你获得丰厚的收入。拥有赚钱的快乐。\n\n最后是数学：\n\n    首先B站上，啥视频都有。。有人喜欢看就多写点。首先如果高数基础不好就看同济的高数和线性代数，概率论就看浙大的。这些书先别管和美国教材相比好不好，这些书都是有对应的辅导书和参考习题解答的。你先对着玩一遍。之后过一遍吉米多维奇\n\n    。\n    之后就可以走不同的方向，想玩微积分方向的就去B站刷一遍数学分析。之后刷一遍裴里文。\n    如果进一步想玩，就去看程其襄的实变函数。这个在B站有一个非常好的视频教程。ModuliSpace做的。\n    想玩实分析和复分析的，那本可视化方法现在B站上也有教程。\n    如果看DL眼热的，对概率论有兴趣的，可以先买一本北大黄皮的测度论和概率论基础，这个在B站上也有教程。还有Advanced probability也有讲解视频。上面的都搞完，就可以玩Foundation of ML轻松一下了。\n    反正就是有很多事情可以玩。\n\n而且正如评论区说的一样。这三个技能合起来以后，还会有1 + 1 + 1 > 3 的奇效。\n\n你会编程能看懂代码，就意味着你就算看不懂很多文章中的公式，你还可以先把代码看明白，搞清楚整个流程以后，对着代码看公式。你要是能看懂公式，反过来可以自己写代码实现这些公式。而英语更是可以帮助你看明白很多代码的文档，和很多国外的数学讲义。\n\n还有就是，对于我这个程序员来说，这三个爱好几乎都可以利用上班时间玩。因为领导有的时候，很难分清你在编程的东西是否和工作相关。也很难分清你看的英文文章是技术资料还是经济学人的报道。至于带有数学公式的东西，更是难以分辨。\n\n这就是我为什么是三个一起搞。那是因为我不敢在上班时间看B站，也不敢在上班时间刷吉米多维奇。会被领导批评的。但是我要是上班时间写光追引擎，领导就看不出来。写累了就看经济学人的英文文章换换脑子。直到周末和下班以后，才有时间刷吉米多维奇玩。\n\n另外，琴棋书画都非常省钱。你买把好点的吉他。能弹一辈子。大部分人一辈子都不需要2000元以上的琴。下棋更便宜，一副棋顶多几十元。写毛笔字也很便宜。一套蘸水的字帖几元钱。画画也不贵。买几根铅笔就能玩。\n\n你觉得2000元以上的吉他非常贵。但是你要是不想玩了。闲鱼上2000元还能卖掉。等于不花钱白玩好多年。甚至玩PS5光盘游戏都非常省钱。花3000元买个游戏机。不想玩了。闲鱼上2800元还能卖掉。游戏一个200元。通关了在闲鱼上180元还能卖掉。等于就花20块钱玩一个游戏。\n\n至于自驾游。这个是最费钱的。几十万买个车，开上几年，能花10万卖了，都是烧高香。几年就花进去几十万。我这种穷人是连想都不敢想的啊！！！\n\n---\n你的低成本爱好是什么？ - lu luce的回答 - 知乎\nhttps://www.zhihu.com/question/1897959255778231029/answer/1911414619534263222",
+        "id": 83,
+        "created_at": "2025-11-18 19:47:31.410",
+        "updated_at": "2025-11-18 19:47:31.410",
+        "note_type": "default"
+    },
+    {
+        "title": "GCC编译器下载与安装指南",
+        "content": "GCC编译器 (MinGW-w64)\n\n    下载地址: https://www.mingw-w64.org/\n\n    或者通过MSYS2安装: pacman -S mingw-w64-x86_64-gcc\n\n    验证安装: gcc --version",
+        "id": 84,
+        "created_at": "2025-11-18 22:33:43.768",
+        "updated_at": "2025-11-18 22:33:43.768",
+        "note_type": "default"
+    },
+    {
+        "title": "PocketBase：轻量级后端工具，提升开发效率",
+        "content": "1. https://v.douyin.com/N-Ly1OIszc8/",
+        "id": 85,
+        "created_at": "2025-11-19 08:36:08.821",
+        "updated_at": "2025-11-19 08:36:08.821",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "Gemini3发布：AI助力前端自动化开发",
+        "content": "1. https://v.douyin.com/ac7mgUSUXCA/",
+        "id": 86,
+        "created_at": "2025-11-19 09:05:43.183",
+        "updated_at": "2025-11-19 09:05:43.183",
+        "note_type": "hyperlink"
+    },
+    {
+        "title": "优雅的AI编程流程：分析项目、完善需求、设计文档、实施方案，最后写代码",
+        "content": "写代码的这个其实有更优雅的用法，应该使用spec-driven模式，一上来不是直接就让大模型写代码。正常的流程如下：1.让大模型分析你的项目。2.把你的需求提给大模型，让它分析你的需求（这一步不是设计，而是通过两轮交互阐明完善需求） 3.根据阐述清楚的需求通过两三次交互进行设计（这一步也不是写代码，而是出一份设计文档）4.根据设计文档制定实施方案。5.让大模型参照实施方案写代码。\n其实用熟练了就会发现，和大模型进行交互的70%的时间，并没有让大模型去写代码。",
+        "id": 87,
+        "created_at": "2025-11-19 09:41:57.788",
+        "updated_at": "2025-11-19 09:41:57.788",
+        "note_type": "default"
+    },
+    {
+        "title": "Python从教学语言成长为科研金融王牌",
+        "content": "想当年，Python刚出道时就因简洁性闻名遐迩，因此逐渐替代Java成为了高校的教学语言。\n\n随后，NumPy、SciPy、matplotlib、pandas等库相继问世，让Python迅速成长为科研、金融、数据分析领域的王牌。\n",
+        "id": 89,
+        "created_at": "2025-11-19 10:18:32.827",
+        "updated_at": "2025-11-20 18:36:41.755",
+        "note_type": "default"
+    },
+    {
+        "title": "【12345】Python库概览：涵盖网络爬虫、文本处理、自然语言处理等多领域技术",
+        "content": "python的库太多了，涵盖了各行各业\n\n不论从那家的统计来说，python语言的实力是毋容置疑的，各种库函数，涵盖了方方面面。\n\n网络\n\nurllib\n\n-网络库(stdlib)。\n\nrequests\n\n-网络库。\n\ngrab\n– 网络库（基于pycurl\n\n）。\n\npycurl – 网络库（绑定libcurl）。\n\nurllib3\n\n– Python HTTP库，安全连接池、支持文件post、可用性高。\n\nhttplib2\n\n– 网络库。\n\nRoboBrowser\n\n– 一个简单的、极具Python风格的Python库，无需独立的浏览器即可浏览网页。\n\nMechanicalSoup\n\n-一个与网站自动交互Python库。\n\nmechanize -有状态、可编程的Web浏览库。\n\nsocket\n\n– 底层网络接口(stdlib)。\n\n网络爬虫框架\n\ngrab – 网络爬虫框架（基于pycurl/multicur）。\n\nscrapy\n\n– 网络爬虫框架。\n\npyspider\n\n– 一个强大的爬虫系统。\n\ncola\n\n– 一个分布式爬虫框架。\n\nHTML/XML解析器\n\nlxml\n\n– C语言编写高效HTML/ XML处理库。支持XPath。\n\ncssselect\n\n– 解析DOM树和CSS选择器。\n\npyquery\n\n– 解析DOM树和jQuery选择器。\n\nBeautifulSoup\n\n– 低效HTML/ XML处理库，纯Python实现。\n\nhtml5lib\n\n– 根据WHATWG规范生成HTML/ XML文档的DOM。该规范被用在现在所有的浏览器上。\n\nfeedparser\n\n– 解析RSS/ATOM feeds。\n\nMarkupSafe\n\n– 为XML/HTML/XHTML提供了安全转义的字符串。\n\n文本处理\n\n用于解析和操作简单文本的库。\n\ndifflib\n\n– （Python标准库）帮助进行差异化比较。\n\nLevenshtein\n\n– 快速计算Levenshtein距离和字符串相似度。\n\nfuzzywuzzy – 模糊字符串匹配。\n\nesmre\n\n– 正则表达式加速器。\n\nftfy\n\n– 自动整理Unicode文本，减少碎片化。\n\n自然语言处理\n\n处理人类语言问题的库。\n\nNLTK -编写Python程序来处理人类语言数据的最好平台。\n\nPattern\n\n– Python的网络挖掘模块。他有自然语言处理工具，机器学习以及其它。\n\nTextBlob\n\n– 为深入自然语言处理任务提供了一致的API。是基于NLTK以及Pattern的巨人之肩上发展的。\n\njieba\n\n– 中文分词工具。\n\nSnowNLP\n\n– 中文文本处理库。\n\nloso\n\n– 另一个中文分词库。\n\n浏览器自动化与仿真\n\nselenium\n\n– 自动化真正的浏览器（Chrome浏览器，火狐浏览器，Opera浏览器，IE浏览器）。\n\nGhost.py\n\n– 对PyQt的webkit的封装（需要PyQT）。\n\nSpynner\n\n– 对PyQt的webkit的封装（需要PyQT）。\n\nSplinter\n\n– 通用API浏览器模拟器（selenium web驱动，Django客户端，Zope）。\n\n多重处理\n\nthreading – Python标准库的线程运行。对于I/O密集型任务很有效。对于CPU绑定的任务没用，因为python GIL。\n\nmultiprocessing – 标准的Python库运行多进程。\n\ncelery – 基于分布式消息传递的异步任务队列/作业队列。\n\nconcurrent-futures – concurrent-futures 模块为调用异步执行提供了一个高层次的接口。\n\n异步\n\n异步网络编程库\n\nasyncio – （在Python 3.4 +版本以上的 Python标准库）异步I/O，时间循环，协同程序和任务。\n\nTwisted – 基于事件驱动的网络引擎框架。\n\nTornado – 一个网络框架和异步网络库。\n\npulsar – Python事件驱动的并发框架。\n\ndiesel – Python的基于绿色事件的I/O框架。\n\ngevent – 一个使用greenlet 的基于协程的Python网络库。\n\neventlet – 有WSGI支持的异步框架。\n\nTomorrow – 异步代码的奇妙的修饰语法。\n\n队列\n\ncelery – 基于分布式消息传递的异步任务队列/作业队列。\n\nhuey – 小型多线程任务队列。\n\nmrq – Mr. Queue – 使用redis & Gevent 的Python分布式工作任务队列。\n\nRQ – 基于Redis的轻量级任务队列管理器。\n\nsimpleq – 一个简单的，可无限扩展，基于Amazon SQS的队列。\n\npython-gearman – Gearman的Python API。\n\n云计算\n\npicloud – 云端执行Python代码。\n\nhttp://dominoup.com – 云端执行R，Python和matlab代码\n\n网页内容提取\n\n提取网页内容的库。\n\nHTML页面的文本和元数据\n\nnewspaper – 用Python进行新闻提取、文章提取和内容策展。\n\nhtml2text – 将HTML转为Markdown格式文本。\n\npython-goose – HTML内容/文章提取器。\n\nlassie – 人性化的网页内容检索工具\n\nWebSocket\n\n用于WebSocket的库。\n\nCrossbar – 开源的应用消息传递路由器（Python实现的用于Autobahn的WebSocket和WAMP）。\n\nAutobahnPython – 提供了WebSocket协议和WAMP协议的Python实现并且开源。\n\nWebSocket-for-Python – Python 2和3以及PyPy的WebSocket客户端和服务器库。\n\nDNS解析\n\ndnsyo – 在全球超过1500个的DNS服务器上检查你的DNS。\n\npycares – c-ares的接口。c-ares是进行DNS请求和异步名称决议的C语言库。\n\n计算机视觉\n\nOpenCV – 开源计算机视觉库。\n\nSimpleCV – 用于照相机、图像处理、特征提取、格式转换的简介，可读性强的接口（基于OpenCV）。\n\nmahotas – 快速计算机图像处理算法（完全使用 C++ 实现），完全基于 numpy 的数组作为它的数据类型。",
+        "id": 90,
+        "created_at": "2025-11-19 15:48:22.944",
+        "updated_at": "2025-11-20 20:08:51.167",
+        "note_type": "default"
+    }
+]
