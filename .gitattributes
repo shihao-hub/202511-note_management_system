@@ -1,5 +1,7 @@
-app/docs/** linguist-vendored
-app/tests/** linguist-vendored
-app/tools/** linguist-vendored
-app/fonts/** linguist-vendored
-app/static/** linguist-vendored
+docs/** linguist-vendored
+tests/** linguist-vendored
+tools/** linguist-vendored
+unit/bin/** linguist-vendored
+unit/exports/** linguist-vendored
+unit/fonts/** linguist-vendored
+unit/static/** linguist-vendored

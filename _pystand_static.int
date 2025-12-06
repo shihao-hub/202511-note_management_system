@@ -1,12 +1,12 @@
 # 整体源码来自 https://skywind.me/blog/archives/3002，但是需要改动
 import sys, os
 os.chdir(os.path.dirname(__file__))
-sys.path.append(os.path.abspath('app'))
-sys.path.append(os.path.abspath('app.egg'))
+sys.path.append(os.path.abspath('unit'))
+sys.path.append(os.path.abspath('unit.egg'))
 # 多进程调用无限启动问题：https://github.com/skywind3000/PyStand/issues/21
 if not hasattr(sys, 'frozen'):
     sys.frozen = True
 # 设置当前工作目录为 src 源代码目录（不知道为什么作者不设置这个，显然应该设置这个）
-os.chdir(os.path.join(os.path.dirname(__file__), "app"))
+os.chdir(os.path.join(os.path.dirname(__file__), "unit"))
 import main
 main.main()
