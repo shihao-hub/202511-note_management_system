@@ -78,7 +78,7 @@ document.addEventListener("DOMContentLoaded", function () {
             const selectedText = value.substring(start, end);
             const lines = selectedText.split("\n");
             // todo: 快速学习一下 javascript 的基础语法和 api 如何？看样子还是应该学学 javascript...
-            const indentedText = lines.map(line => "\t" + line).join("\n");
+            const indentedText = lines.map(line => "    " + line).join("\n"); // [2025-12-18] 用 4 空格替代 tab（有问题，真正的原因应该是 TEXTAREA 没有感知到内容变化）
             e.target.value = value.substring(0, start) + indentedText + value.substring(end);
 
             // 移动光标到缩进后的位置

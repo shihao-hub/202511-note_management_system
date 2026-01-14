@@ -5,7 +5,6 @@ import webbrowser
 import tempfile
 from typing import List
 
-from loguru import logger
 from fastapi import Request, UploadFile, File, FastAPI
 from fastapi.exceptions import HTTPException
 from fastapi.responses import HTMLResponse, StreamingResponse, FileResponse, Response
@@ -16,6 +15,7 @@ from nicegui import app
 from services import AttachmentService
 from schemas import SuccessResponse
 from utils import audio_to_text_by_qwen3_asr
+from log import logger
 
 # [note] StreamingResponse 是流式返回，FileResponse 直接传入文件路径
 # [note] 任何技术的原始层面的锻炼是非常重要的，比如 sql 语句，虽然 orm 节省功夫且可以立刻干活，但是还是要用 sql 语句写项目锻炼的！
@@ -26,6 +26,11 @@ fastapi_app = FastAPI()
 
 # 简单的限流器，最低只能设置 1 秒 1 次（我想要的是这个效果，因为某个时间段限制次数依旧可以做到一瞬间一堆次数）
 limiter = Limiter(key_func=get_remote_address)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
 
 
 @app.get("/open-external-link")

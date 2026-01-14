@@ -7,7 +7,6 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 import pyperclip
-from loguru import logger
 from aiohttp import ClientSession
 from nicegui import ui
 from nicegui.events import GenericEventArguments, ValueChangeEventArguments
@@ -18,8 +17,9 @@ from views import HeaderView, build_footer, see_attachment
 from utils import go_main, go_get_note, DeepSeekClient, register_find_button_and_click, RateLimiter, build_ai_chain, \
     go_edit_note
 from services import AttachmentService, NoteService, UserConfigService
-from settings import dynamic_settings, ENV, IS_PACKED
+from settings import dynamic_settings, ENV
 from views import View, Controller
+from log import logger
 
 
 class PageAddOrEditNoteController(Controller["PageAddOrEditNoteView"]):
@@ -320,7 +320,7 @@ class PageAddOrEditNoteController(Controller["PageAddOrEditNoteView"]):
                 if not auto_save:
                     ui.notify("保存笔记成功！", type="positive")
                     # 建议直接跳转到编辑页面（使用发现，直接跳转 + 跳转后 notify 更好...）
-                    ui.timer(0.5, lambda: go_edit_note(note_id=instance.id))
+                    ui.timer(0.5, lambda: go_edit_note(note_id=instance.id), once=True)
             else:
                 async with NoteService() as service:
                     result = await service.update(self.view.note_id,
@@ -517,7 +517,8 @@ class PageAddOrEditNoteView(View["PageAddOrEditNoteController"]):
                         ):
                             # with ui.scroll_area().classes("flex-grow p-3 bg-gray-50"):
                             #     self.content_preview = ui.markdown().classes("prose prose-sm max-w-none")
-                            self.content_preview = ui.markdown().classes("prose prose-sm h-64 ")
+                            self.content_preview = ui.markdown().classes("prose prose-sm h-64 ") \
+                                .style("user-select: text; cursor: text;")
 
                 # 粘贴上传
                 self.content.on("nms_upload_success", self.controller.on_nms_upload_success)

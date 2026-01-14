@@ -2,8 +2,9 @@ import os
 from enum import Enum
 from typing import Callable, Tuple, Sequence, List, Dict, TypedDict, Literal
 
-from loguru import logger
 from nicegui import ui, app
+
+from log import logger
 
 
 # [note] 数据流动方向 components.py -> views.py（谨防循环依赖问题）
@@ -15,7 +16,6 @@ class NoteInputElement:
     #       如果解决这个问题，可能就好一点了。
     def __init__(self):
         pass
-
 
 
 class LoadingOverlay:
@@ -133,6 +133,7 @@ def show_config_dialog():
     """展示配置项/首选项弹窗"""
     with ui.dialog(value=True), ui.card().classes("w-96 p-4"):
         pass
+
 
 # [2025-11-18] 先把之前写的临时弹窗抽取到这边，暂不考虑优化（封装成类之后慢慢考虑优化）
 class ConfigInfoTypeDict(TypedDict):

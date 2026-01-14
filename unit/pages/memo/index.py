@@ -8,12 +8,11 @@ from typing import Callable, Any, TypeVar, List, Dict
 
 from unqlite import UnQLite, Collection, Cursor
 from async_lru import alru_cache
-from loguru import logger
 from nicegui import ui
 from watchfiles import awatch
 
 from utils import get_thread_pool_executor, asyncify
-
+from log import logger
 
 class AsyncUnQLite:
     DEFAULT_DB_PATH = "memo.unqlite"

@@ -1,0 +1,295 @@
+import os
+import sys
+import subprocess
+import atexit
+import threading
+from pathlib import Path
+
+from portpicker import pick_unused_port
+from PySide6.QtWidgets import QApplication, QMainWindow, QVBoxLayout, QWidget, QMessageBox, QMenu, QStyle
+from PySide6.QtCore import QTimer, QUrl, QSharedMemory
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+from PySide6.QtGui import QAction
+
+from log import logger
+
+IS_DEV = not hasattr(sys, "PYSTAND") and not hasattr(sys, "frozen")
+SINGLE_INSTANCE_KEY = "NoteManagerApp_SingleInstance" + ("" if not IS_DEV else "_Dev")  # 单例锁键，但区分 dev 和 prod 环境
+
+LOADING_PAGE_HTML = """
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #333;
+        }
+        .loading {
+            text-align: center;
+            font-size: 24px;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #0078d7;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #timer {
+            font-size: 16px;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading">
+        <div class="spinner"></div>
+        <p>正在启动后端服务，请稍候...</p>
+        <div id="timer">已等待 <span id="seconds">0.0</span> 秒</div>
+    </div>
+
+    <script>
+        let startTime = performance.now();
+        const span = document.getElementById('seconds');
+
+        function updateTimer() {
+            let elapsed = (performance.now() - startTime) / 1000;
+            span.textContent = elapsed.toFixed(1);
+            requestAnimationFrame(updateTimer);
+        }
+
+        updateTimer();
+    </script>
+</body>
+</html>
+"""
+
+ERROR_PAGE_HTML = """
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #fff5f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #c00;
+        }
+        .error {
+            text-align: center;
+            font-size: 20px;
+            max-width: 600px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error">
+        <h2>❌ 无法连接到后端服务</h2>
+        <p>后端进程未能及时启动。请联系维护人员。</p>
+    </div>
+</body>
+</html>
+"""
+
+os.environ["NICEGUI_TITLE"] = "笔记管理系统"
+os.environ["NICEGUI_PORT"] = str(pick_unused_port())
+os.environ["NICEGUI_WINDOW_SIZE_WIDTH"] = "1250"
+os.environ["NICEGUI_WINDOW_SIZE_HEIGHT"] = "875"
+os.environ["MKDOCS_PORT"] = str(pick_unused_port())
+
+
+class MainWindow(QMainWindow):
+    def __init__(self):
+        super().__init__()
+
+        self.health_url = f"http://127.0.0.1:{os.environ["NICEGUI_PORT"]}/health"
+        self.index_url = f"http://127.0.0.1:{os.environ["NICEGUI_PORT"]}/"
+        self.retry_count = 0
+
+        self.setWindowTitle(os.environ["NICEGUI_TITLE"])
+        self.resize(int(os.environ["NICEGUI_WINDOW_SIZE_WIDTH"]), int(os.environ["NICEGUI_WINDOW_SIZE_HEIGHT"]))
+
+        # 创建 QWebEngineView
+        self.view = QWebEngineView()
+
+        # 创建一个中心部件容器（通常是 QWidget）
+        central_widget = QWidget()
+        layout = QVBoxLayout(central_widget)
+        layout.addWidget(self.view)
+        self.setCentralWidget(central_widget)
+
+        # 创建 QMenuBar
+        self.menu_bar = self.menuBar()
+        nav_menu = self.menu_bar.addMenu("导航")
+        home_action = QAction(self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowBack), "返回主页", self)
+        home_action.triggered.connect(lambda: self.view.load(QUrl(self.index_url)))
+        nav_menu.addAction(home_action)
+
+        # 初始化网络管理器
+        self.network_manager = QNetworkAccessManager(self)
+        self.network_manager.finished.connect(self.on_health_check_response)
+
+        # 显示加载页
+        self.view.setHtml(LOADING_PAGE_HTML)
+
+        # 开始检查后端
+        QTimer.singleShot(100, self.check_backend_ready)
+
+    def check_backend_ready(self):
+        request = QNetworkRequest(QUrl(self.health_url))
+        request.setTransferTimeout(1000)  # 1秒超时
+        reply = self.network_manager.get(request)
+        reply.setProperty("request_type", "health")  # 标记类型
+
+    def on_health_check_response(self, reply):
+        req_type = reply.property("request_type")
+        logger.info(f"[pyside] Request type: {req_type}")
+        if reply.error() == QNetworkReply.NetworkError.NoError:
+            status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+            if status_code == 200:
+                logger.info("[pyside] Backend is ready!")
+                self.view.load(QUrl(self.index_url))
+                reply.deleteLater()
+                return
+
+        # 请求失败、超时、连接拒绝等
+        logger.info(f"[pyside] Health check failed: {reply.errorString()}")
+        reply.deleteLater()
+
+        self.retry_count += 1
+        if self.retry_count < 20:  # 最多重试次数，最大等待时间大概等于 maxretry_count * (interval + timeout)
+            QTimer.singleShot(100, self.check_backend_ready)
+        else:
+            self.view.setHtml(ERROR_PAGE_HTML)
+            logger.info("[pyside] Backend did not start in time.")
+
+
+def get_python_exe():
+    """获取 Python 可执行文件路径，PyStand 或 Pyinstaller 打包后的 sys.executable 指向的不是 python.exe"""
+    runtime = Path("../runtime/").resolve()
+    res = sys.executable if not runtime.exists() else str(runtime / "python.exe")
+    logger.info(f"[pyside] python.exe: {res}")
+    return res
+
+
+def terminate_process_gracefully(proc, timeout=5):
+    """优雅终止子进程：先尝试 terminate，超时则 kill（因为默认情况下，主进程结束，子进程似乎会继续运行）"""
+    if proc and proc.poll() is None:
+        logger.info("[pyside] Terminating backend process...")
+        proc.terminate()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.info("[pyside] Backend did not terminate gracefully; killing it.")
+            proc.kill()
+
+
+def start_backend():
+    # NOTE: 将 loguru.logger 转至 log.py 后，运行 main.py 控制台不再显示 app.py 中的日志了，但是影响不大，因为 main.py 只是个壳子，开发阶段调试的是 app.py
+    cmd = [get_python_exe(), "app.py"]
+    env = os.environ.copy()
+    env["PYSIDE"] = "1"
+    return subprocess.Popen(cmd, cwd=".", env=env, creationflags=subprocess.CREATE_NO_WINDOW)
+
+
+def start_site():
+    # PySide 的 QWebEngineView 和 pywebview 还是有差异的
+    # 实践发现，PySide 新版本会把 Chromium 更新版本也编译进来的，所以非旧版本原因，测试发现，使用谷歌浏览器有些地方和火狐确实不一样！
+    # 除此之外，我发现 QWebEngineView 应该是通信的原因，导致相比浏览器打开，有明显的延迟
+    # todo: 考虑将 mkdocs 资源本地化，否则生成的静态网站的资源要 vpn 才能访问...
+    cmd = [
+        get_python_exe(), "-m", "mkdocs", "serve",
+        "-f", str(Path("./site/mkdocs.yml").resolve()),
+        "-a", f"localhost:{os.environ["MKDOCS_PORT"]}"
+    ]
+    proc = subprocess.Popen(
+        cmd,
+        cwd="./site",
+        creationflags=subprocess.CREATE_NO_WINDOW,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,  # 合并 stderr 到 stdout
+        text=True,
+        encoding="utf-8",
+    )
+
+    # 在后台线程（避免阻塞主线程）中实时读取日志，因为 creationflags=subprocess.CREATE_NO_WINDOW 模式下日志将丢失
+    def read_output():
+        try:
+            for line in proc.stdout:
+                logger.info(f"[mkdocs] {line.rstrip()}")
+        except Exception as e:
+            logger.error(f"[mkdocs reader error] {e}")
+
+    thread = threading.Thread(target=read_output, daemon=True)
+    thread.start()
+
+    return proc
+
+
+def main():
+    # todo: 建议模仿 PyStand，用 cpp 和 qt 打包一个启动壳（PySide 实在太大了，或者也可以尝试精简 PySide）
+
+    # NOTE: 此处的 PySide 主要作为壳子使用，故而整个文件可以封装好，然后再把 PySide 中未依赖的部分手动删掉，减少体积
+    app = QApplication(sys.argv)
+    app.setStyle("Fusion")
+
+    # 创建共享内存段用于单例检测，并确保程序退出时释放共享内存（可选，系统通常会自动清理）
+    shared_mem = QSharedMemory(SINGLE_INSTANCE_KEY)
+    atexit.register(lambda: shared_mem.isAttached() | shared_mem.detach())
+
+    # 尝试创建共享内存（只有第一个实例能成功）| 联想 -> 底层原理之进程通信
+    if not shared_mem.create(1):  # 1字节足够
+        # 已存在另一个实例
+        msg = QMessageBox()
+        msg.setWindowTitle("提示")
+        msg.setText(f"{os.environ["NICEGUI_TITLE"]}已在运行！")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.exec()
+        sys.exit(0)  # 直接退出新启动的实例
+
+    # 正常启动主程序
+    backend_proc = start_backend()
+    atexit.register(lambda: terminate_process_gracefully(backend_proc, timeout=3))
+
+    site_proc = start_site()
+    atexit.register(lambda: terminate_process_gracefully(site_proc, timeout=3))
+
+    MainWindow().show()
+
+    sys.exit(app.exec())
+
+
+def pywebview_main():
+    import webview
+
+    backend_proc = start_backend()
+    atexit.register(lambda: terminate_process_gracefully(backend_proc, timeout=3))
+
+    webview.create_window(
+        os.environ["NICEGUI_TITLE"],
+        f"http://127.0.0.1:{os.environ["NICEGUI_PORT"]}",
+    )
+    webview.start()
+
+
+if __name__ == "__main__":
+    main()

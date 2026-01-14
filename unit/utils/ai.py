@@ -10,12 +10,12 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import TypedDict, Dict, Union, List
 
-from loguru import logger
 from aiohttp import ClientSession, ClientTimeout
 from result import Result, Ok, Err
 from openai import AsyncOpenAI
 from gradio_client import Client, handle_file, FileData
 
+from log import logger
 from .mediator import get_thread_pool_executor
 
 

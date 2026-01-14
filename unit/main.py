@@ -1,175 +1,214 @@
-import io
+import os
 import sys
-import traceback
+import subprocess
+import atexit
+import threading
+import time
+import urllib.request
+from pathlib import Path
 
-from addict import Dict as Addict
-from nicegui import ui, app, native
-from loguru import logger
-from dotenv import load_dotenv
+import webview
+from portpicker import pick_unused_port
+from filelock import FileLock, Timeout
+from plyer import notification
 
-# region - template
+from log import logger
 
-# python-doenv 设置环境变量
-load_dotenv(".env")
+IS_DEV = not hasattr(sys, "PYSTAND")
 
-# pyinstaller（注意 sqlalchemy 搭配 alembic 的主动迁移命令，导致打包后出错，需要考虑如何解决，虽然复制一个无数据 db 即可解决）
-try:
-    import addict
-    import aiocache
-    import aiosqlite
-    import alembic
-    import async_lru
-    import fastapi_limiter
-    import jinja2
-    import loguru
-    import lupa
-    import nicegui
-    import numpy
-    import openai
-    import pandas
-    import portpicker
-    import pydantic_settings
-    import pyecharts
-    import pyperclip
-    import result
-    import slowapi
-    import sqlalchemy
-    import sqlalchemy_utc
-    import tinydb
-    import unqlite
+os.environ["NICEGUI_TITLE"] = "笔记管理系统"
+os.environ["NICEGUI_PORT"] = str(pick_unused_port())
+os.environ["NICEGUI_WINDOW_SIZE_WIDTH"] = "1200"
+os.environ["NICEGUI_WINDOW_SIZE_HEIGHT"] = "900"
 
-    import gradio_client  # 实践发现，这个库 pyintaller 打包不进来，不知道是 nicegui-pack 的原因还是什么原因
-    import matplotlib  # 实践发现，`No module named 'matplotlib.backends.backend_svg'`，添加下列代码后导入成功
-    import matplotlib.backends
-    import matplotlib.backends.backend_svg
-except ImportError as exception:
-    logger.error(exception)
-    raise exception
+LOADING_PAGE_HTML = """
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f5f5f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #333;
+        }
+        .loading {
+            text-align: center;
+            font-size: 24px;
+        }
+        .spinner {
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-left-color: #0078d7;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        #timer {
+            font-size: 16px;
+            color: #666;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="loading">
+        <div class="spinner"></div>
+        <p>正在启动后端服务，请稍候...</p>
+        <div id="timer">已等待 <span id="seconds">0.0</span> 秒</div>
+    </div>
 
-# 移除默认的日志处理器
-logger.remove()
-# 创建一个 UTF-8 编码的文本包装器
-utf8_stdout = io.TextIOWrapper(
-    sys.stdout.buffer,
-    encoding="utf-8",
-    errors="replace"  # 当遇到无法编码或解码的字符时，不抛出异常，而是用一个替代字符代替它，这样程序不会崩溃
-)
-# 控制台输出 - 彩色，简洁格式
-logger.add(
-    utf8_stdout,
-    format="<c>{time:YYYY-MM-DD HH:mm:ss.SSS}</c> | <level>{level: <8}</level> | <cyan>{name}:{function}:{line}</cyan> - {message}",
-    level="DEBUG",
-    colorize=True,
-    backtrace=True,
-    diagnose=True
-)
-# 详细日志文件 - 包含所有级别
-logger.add(
-    "debug.log",
-    format="<c>{time:YYYY-MM-DD HH:mm:ss.SSS}</c> | <level>{level: <8}</level> | <cyan>{name}:{function}:{line}</cyan> - {message}",
-    level="DEBUG",
-    rotation="10 MB",
-    retention="7 days",
-    compression="gz",
-    backtrace=True,
-    diagnose=True
-)
+    <script>
+        let startTime = performance.now();
+        const span = document.getElementById("seconds");
 
-# endregion
+        function updateTimer() {
+            let elapsed = (performance.now() - startTime) / 1000;
+            span.textContent = elapsed.toFixed(1);
+            requestAnimationFrame(updateTimer);
+        }
 
-# 在 main.py 中项目的包建议放在最下面执行，这样最稳当（比如 .env 导入，nicegui 环境变量设置等）
-from api import fastapi_app
-from models import init_db, auto_upgrade_db
-from utils import cleanup
-from services import UserConfigService
-from settings import dynamic_settings, IS_PACKED
-from pages import register_pages
+        updateTimer();
+    </script>
+</body>
+</html>
+"""
 
-AUTO_UPGRADE_DB = False
-
-register_pages()
-
-# [knowledge] 在创建 NiceGUI 应用时保留 FastAPI 的文档路由（不要让 nicegui 接管根路径）
-app.mount("/api", fastapi_app)
-app.add_static_files("/static", "static")
-app.add_static_files("/fonts", "fonts")
-
-
-@app.on_startup
-async def startup_event():
-    logger.debug("🌱 app - startup")
-    await init_db()
-    logger.debug("🔄 尝试执行 auto_upgrade_db - IS_PACKED: {}, AUTO_UPGRADE_DB: {}", IS_PACKED, AUTO_UPGRADE_DB)
-    if IS_PACKED or AUTO_UPGRADE_DB:
-        await auto_upgrade_db()
-    async with UserConfigService() as service:
-        await service.init_user_config()
-    await cleanup.start()
-
-
-@app.on_shutdown
-async def shutdown_event():
-    logger.debug("🔚 app - shutdown")
-    await cleanup.stop()
+ERROR_PAGE_HTML = """
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #fff5f5;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            color: #c00;
+        }
+        .error {
+            text-align: center;
+            font-size: 20px;
+            max-width: 600px;
+            padding: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div class="error">
+        <h2>❌ 无法连接到后端服务</h2>
+        <p>后端进程未能及时启动。请联系维护人员。</p>
+    </div>
+</body>
+</html>
+"""
 
 
-@app.on_exception
-def handle_exception(e: Exception):
-    # 如果当前函数是 async，那么 traceback.format_exc() 的值是 NoneType: None，不知道为什么
-    logger.error("捕获到全局异常：{}({})\n{}\n============", e, type(e).__name__, traceback.format_exc())
+def is_already_running():
+    """通过文件锁保证单实例运行"""
+    try:
+        lock_file = os.path.join(os.path.expanduser("~"), f".notemanager_{"dev" if IS_DEV else "prod"}.lock")
+        lock = FileLock(lock_file)
+        lock.acquire(timeout=0)  # 非阻塞尝试获取锁，立即失败则说明已有实例
+        atexit.register(lock.release)  # 退出时释放锁，即使不注册且程序崩溃，操作系统通常也会清理文件锁
+        return False
+    except Timeout:
+        return True
+    except Exception as e:
+        logger.error("[pywebview] Failed to acquire lock file: {}({})", e, type(e).__name__)
+        raise
+
+
+def get_python_exe():
+    runtime = Path("../runtime/").resolve()
+    res = sys.executable if not runtime.exists() else str(runtime / "python.exe")
+    logger.info(f"[pywebview] python.exe: {res}")
+    return res
+
+
+def terminate_process_gracefully(proc, timeout=5):
+    if proc and proc.poll() is None:
+        logger.info("[pywebview] Terminating backend process...")
+        proc.terminate()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            logger.info("[pywebview] Backend did not terminate gracefully; killing it.")
+            proc.kill()
+
+
+def start_backend():
+    cmd = [get_python_exe(), "app.py"]
+    env = os.environ.copy()
+    env["PYWEBVIEW"] = "1"
+    return subprocess.Popen(cmd, cwd=".", env=env, creationflags=subprocess.CREATE_NO_WINDOW if not IS_DEV else 0)
+
+
+def start_app(window):
+    index_url = f"http://127.0.0.1:{os.environ["NICEGUI_PORT"]}/"
+    health_url = f"http://127.0.0.1:{os.environ["NICEGUI_PORT"]}/health"
+
+    window.load_html(LOADING_PAGE_HTML)  # 显示加载页
+
+    def health_check_loop():
+        """后台健康检查"""
+        retry_count = 0
+        max_retries = 20
+        while retry_count < max_retries:
+            try:
+                request = urllib.request.Request(health_url)
+                with urllib.request.urlopen(request, timeout=1) as response:
+                    if response.getcode() == 200:
+                        logger.info("[pywebview] Backend is ready!")
+                        window.load_url(index_url)
+                        return
+            except Exception as e:
+                logger.debug(f"[pywebview] Health check failed: {e}")
+
+            retry_count += 1
+            time.sleep(0.1)
+
+        logger.error("[pywebview] Backend did not start in time.")
+        window.load_html(ERROR_PAGE_HTML)
+
+    threading.Thread(target=health_check_loop, daemon=True).start()  # 正确理解守护线程：当主程序退出时，是否要等它
 
 
 def main():
-    props = Addict()
-    props.title = dynamic_settings.title
-    props.host = dynamic_settings.host
-
-    # todo: 添加 static 路由和文件，解决 cdn 需要挂 vpn 的问题
-
-    if not IS_PACKED:
-        import argparse
-
-        # NiceGUI 使用 webview 或内置 CEF 启动原生窗口，可通过下列环境变量开启底层日志
-        # import os
-        # os.environ["PYWEBVIEW_LOG"] = "debug"
-        # os.environ["CEFPYTHON_LOG_SEVERITY"] = "info"
-
-        # [pyinstaller 之程序立即退出的根本原因](https://lxblog.com/qianwen/share?shareId=a439527a-cf57-4902-9cca-0cc1172191d3)
-        parser = argparse.ArgumentParser()
-        parser.add_argument("--native", action="store_true", default=False)
-        parser.add_argument("--upgrade", action="store_true", default=False)
-        args = parser.parse_args()
-
-        global AUTO_UPGRADE_DB
-        AUTO_UPGRADE_DB = args.upgrade
-
-        props.native = args.native
-        props.window_size = None
-        if props.native:
-            props.window_size = (1200, 900)
-
-        ui.run(
-            title=props.title,
-            host=props.host,
-            port=8888,
-            native=props.native,
-            window_size=props.window_size,
-            uvicorn_reload_includes="*.py, *.js, *.lua"
+    if is_already_running():
+        notification.notify(
+            title=os.environ["NICEGUI_TITLE"],
+            message=f"应用已在运行！",
+            timeout=5
         )
-    else:
-        logger.debug("nicegui-pack application startup!")
-        port = native.find_open_port(start_port=12000, end_port=65535)
-        logger.debug("启动端口：{}", port)
-        ui.run(
-            title=props.title,
-            host=props.host,
-            port=port,
-            native=True,
-            window_size=(1200, 900),
-            fullscreen=False,
-            reload=False
-        )
+        sys.exit(1)
+
+    # 启动后台子进程
+    backend_proc = start_backend()
+    atexit.register(lambda: terminate_process_gracefully(backend_proc, timeout=3))
+
+    # 初始加载页和启动主循环
+    window = webview.create_window(
+        os.environ["NICEGUI_TITLE"],
+        html=LOADING_PAGE_HTML,
+        width=int(os.environ["NICEGUI_WINDOW_SIZE_WIDTH"]),
+        height=int(os.environ["NICEGUI_WINDOW_SIZE_HEIGHT"]),
+        resizable=True
+    )
+
+    webview.start(start_app, window, debug=False)  # debug=True 可开启 DevTools（仅部分平台支持）
 
 
-if __name__ in {"__main__", "__mp_main__"}:
+if __name__ == "__main__":
     main()

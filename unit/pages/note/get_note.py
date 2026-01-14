@@ -4,14 +4,13 @@ import pyperclip
 from nicegui import ui
 from nicegui.events import GenericEventArguments, ValueChangeEventArguments
 from fastapi.requests import Request
-from loguru import logger
 
 from models import Note, Attachment, NoteDetailRenderTypeEnum, NoteTypeMaskedEnum
 from utils import refresh_page, register_find_button_and_click, go_main, go_add_note, go_edit_note, go_get_note
 from services import NoteService, AttachmentService, UserConfigService
 from views import View, Controller, delete_note, HeaderView, build_footer, see_attachment
 from settings import dynamic_settings, ENV
-
+from log import logger
 
 @ui.page("/get_note", title="笔记详情")
 async def page_get_note(request: Request, note_id: int, notify_from: str = None):

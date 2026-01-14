@@ -1,0 +1,174 @@
+import sys
+import subprocess
+import atexit
+
+from PySide6.QtWidgets import QApplication, QVBoxLayout, QWidget
+from PySide6.QtCore import QTimer, QUrl, QObject
+from PySide6.QtWebEngineWidgets import QWebEngineView
+from PySide6.QtNetwork import QNetworkAccessManager, QNetworkRequest, QNetworkReply
+
+
+def terminate_process_gracefully(proc, timeout=5):
+    """优雅终止子进程：先尝试 terminate，超时则 kill"""
+    if proc and proc.poll() is None:
+        print("Terminating backend process...")
+        proc.terminate()
+        try:
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            print("Backend did not terminate gracefully; killing it.")
+            proc.kill()
+
+
+class MainWindow(QWidget):
+    def __init__(self, backend_process):
+        super().__init__()
+        self.backend_process = backend_process
+
+        self.setWindowTitle("笔记管理系统")
+        layout = QVBoxLayout(self)
+
+        self.view = QWebEngineView()
+        layout.addWidget(self.view)
+
+        self.resize(1200, 900)
+
+        # 初始化网络管理器
+        self.network_manager = QNetworkAccessManager(self)
+        self.network_manager.finished.connect(self.on_health_check_response)
+
+        # 显示加载页
+        self.show_loading_page()
+
+        # 开始检查后端
+        self._retry_count = 0
+        QTimer.singleShot(100, self.check_backend_ready)
+
+    def check_backend_ready(self):
+        health_url = "http://127.0.0.1:9999/health"
+        request = QNetworkRequest(QUrl(health_url))
+        request.setTransferTimeout(1000)  # 1秒超时
+        reply = self.network_manager.get(request)
+        reply.setProperty("request_type", "health")  # 标记类型
+
+    def on_health_check_response(self, reply):
+        req_type = reply.property("request_type")
+        print(f"Request type: {req_type}")
+        if reply.error() == QNetworkReply.NetworkError.NoError:
+            status_code = reply.attribute(QNetworkRequest.Attribute.HttpStatusCodeAttribute)
+            if status_code == 200:
+                print("Backend is ready!")
+                index_url = "http://127.0.0.1:9999/"
+                self.view.load(QUrl(index_url))
+                reply.deleteLater()
+                return
+
+        # 请求失败、超时、连接拒绝等
+        print(f"Health check failed: {reply.errorString()}")
+        reply.deleteLater()
+
+        self._retry_count += 1
+        if self._retry_count < 20:
+            QTimer.singleShot(100, self.check_backend_ready)
+        else:
+            self.show_error_page()
+
+    def show_loading_page(self):
+        html = """
+        <html>
+        <head>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 0;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    background-color: #f5f5f5;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    color: #333;
+                }
+                .loading {
+                    text-align: center;
+                    font-size: 24px;
+                }
+                .spinner {
+                    border: 4px solid rgba(0, 0, 0, 0.1);
+                    border-left-color: #0078d7;
+                    border-radius: 50%;
+                    width: 40px;
+                    height: 40px;
+                    animation: spin 1s linear infinite;
+                    margin: 0 auto 20px;
+                }
+                @keyframes spin {
+                    to { transform: rotate(360deg); }
+                }
+            </style>
+        </head>
+        <body>
+            <div class="loading">
+                <div class="spinner"></div>
+                <p>正在启动后端服务，请稍候...</p>
+            </div>
+        </body>
+        </html>
+        """
+        self.view.setHtml(html)
+
+    def show_error_page(self):
+        html = """
+        <html>
+        <head>
+            <style>
+                body {
+                    margin: 0;
+                    padding: 0;
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    height: 100vh;
+                    background-color: #fff5f5;
+                    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                    color: #c00;
+                }
+                .error {
+                    text-align: center;
+                    font-size: 20px;
+                    max-width: 600px;
+                    padding: 20px;
+                }
+            </style>
+        </head>
+        <body>
+            <div class="error">
+                <h2>❌ 无法连接到后端服务</h2>
+                <p>后端进程未能及时启动。请检查日志或手动重启应用。</p>
+            </div>
+        </body>
+        </html>
+        """
+        self.view.setHtml(html)
+        print("Backend did not start in time.")
+
+
+def start_backend():
+    cmd = [sys.executable, "app.py"]
+    return subprocess.Popen(cmd, cwd=".")
+
+
+def main():
+    app = QApplication(sys.argv)
+
+    backend_proc = start_backend()
+    atexit.register(lambda: terminate_process_gracefully(backend_proc, timeout=3))
+
+    window = MainWindow(backend_proc)
+    window.show()
+
+    sys.exit(app.exec())
+
+
+if __name__ == "__main__":
+    main()

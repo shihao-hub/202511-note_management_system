@@ -1,0 +1,22 @@
+from nicegui import ui, app
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@ui.page("/")
+async def page_index():
+    ui.label("nicegui 已启动").classes("mx-auto")
+
+
+if __name__ in {"__main__", "__mp_main__"}:
+    ui.run(
+        title="笔记管理系统",
+        host="localhost",
+        port=9999,
+        native=False,
+        show=False,
+        reload=False
+    )

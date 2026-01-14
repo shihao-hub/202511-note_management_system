@@ -8,12 +8,13 @@ from typing import Any, TypedDict, Literal, List, Dict
 from alembic import command
 from alembic.config import Config
 from contextvars import ContextVar
-from loguru import logger
 from sqlalchemy import Column, DateTime, func, Integer, String, Text, ForeignKey, BLOB, Enum, JSON, UniqueConstraint
 from sqlalchemy.ext.asyncio import create_async_engine
 from sqlalchemy.ext.asyncio import async_sessionmaker, async_scoped_session, AsyncSession
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, declared_attr, relationship
 from sqlalchemy_utc import UtcDateTime, utcnow
+
+from log import logger
 
 
 # region - template
@@ -105,6 +106,7 @@ async def db_session():
         await session.close()
         _current_session.reset(token)  # 清理上下文，防止内存泄漏
 
+
 def get_db_session() -> AsyncSession:
     """协程安全的 session 上下文，在任意地方安全获取当前 session
 
@@ -120,9 +122,6 @@ def get_db_session() -> AsyncSession:
             "Wrap your code with `async with db_session():`"
         )
     return session
-
-
-
 
 
 class Base(DeclarativeBase):
@@ -244,37 +243,53 @@ class Note(Base):
     visit = Column(Integer, comment="访问次数", server_default="0")
 
     # [knowledge] backref 可以只在一个表中定义，另一个表会自动创建
-    attachments = relationship("Attachment", back_populates="note", cascade="all, delete-orphan")
+    attachments = relationship("Attachment", back_populates="note", cascade="all, delete-orphan", lazy="select")
     """ORM层面的级联删除
-    
+
     cascade="all, delete-orphan"：当Parent对象被删除时，所有关联的Child对象也会被删除
     delete-orphan：当关联关系被移除时（如parent.children = []），被移除的Child对象会被删除
-    
+
     """
+
+    tags = relationship("Tag", back_populates="note", cascade="all, delete-orphan")
+
+    # todo: 新增 metadata 字段，json 格式，用于存储一些自定义的额外信息！
 
 
 class Tag(Base):
     name = Column(String(200), comment="标签名", unique=True, nullable=False)
-    # todo: 如何和 enum 绑定在一起啊？
+    # 如何和 enum 绑定在一起啊？
     source = Column(String(200), comment="标签来源", server_default=TagSourceEnum.AUTO.value)
+    # SQLite + Alembic 的组合在 batch 模式下不允许匿名约束，必须显式命名，理由未知（可能是新增列）
+    # 说实在的，不如用原生 sql 进行版本管理... 否则要么是踩坑、要么是阅读文档、要么是阅读源代码...
+    note_id = Column(Integer, ForeignKey("note.id", name="fk_tag_note_id"), comment="特别使用，允许为空")
+    note = relationship("Note", back_populates="tags", lazy="select")
 
     __table_args__ = (
-        UniqueConstraint("name", name="name_tags_name"),
+        UniqueConstraint("name", name="name_tags_name"),  # 标签名唯一约束，否则 migrate 检测不到
     )
 
 
 class Attachment(Base):
-    # [2025-11-23] 给除 content 表外的数据都加上索引，期望可能弥补一下。因为理解错了 sqlite 的对手是文件系统这句话！大于 100KB 的文件依旧不能存在 sqlite 数据库中！
+    """
+
+    [2025-11-23]
+        给除 content 表外的数据都加上索引，期望可能弥补一下。
+        因为理解错了 sqlite 的对手是文件系统这句话！
+        大于 100KB 的文件依旧不能存在 sqlite 数据库中！
+
+    """
     filename = Column(String(255), comment="原始文件名", nullable=False, index=True)
     content = Column(BLOB, comment="文件二进制内容", nullable=False)
     mimetype = Column(String(100), comment="MIME类型（如 application/pdf）", nullable=False, index=True)
     size = Column(Integer, comment="文件大小，单位字节", nullable=False, index=True)
     temporary_uuid = Column(String(64), comment="临时使用的标识，能模拟临时表效果的字段，也允许为空", index=True)
-
-    # [2025-11-23] 外键加索引
-    note_id = Column(Integer, ForeignKey("note.id"), comment="特别使用，允许为空", index=True)
-
+    note_id = Column(Integer, ForeignKey("note.id"), comment="特别使用，允许为空", index=True)  # [2025-11-23] 外键加索引
     note = relationship("Note", back_populates="attachments")
+
+
+# todo: 分表，将大文件单独存储在另一张表中，然后给 id 建立索引（勉强算分表吧！）
+#       真正的分表：1. 按某字段值的范围切分，如：User0 User1 User2 等，每张表 1000 万条数据 2. 对字段值做 hash 再取模来决定落在哪张表中
 
 
 class UserConfig(Base):

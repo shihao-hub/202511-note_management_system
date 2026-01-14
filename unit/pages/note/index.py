@@ -4,13 +4,12 @@ from functools import partial
 from typing import List, Dict, Tuple
 
 import pyperclip
-from loguru import logger
 from nicegui import ui
 
 from models import Note
 from views import HeaderView, View, Controller, build_softmenu
 from services import NoteService, AttachmentService, UserConfigService
-
+from log import logger
 
 # [note] v1.1.3 版已完成，本文件是在它之后开发的。开始考虑页面样式和代码逻辑如何组织了。
 #        1. **ui 界面通过 Pixso AI 生成并截图发送给千问**：`nicegui如何实现？左侧列表右侧正文，类似 obsidian 那样`

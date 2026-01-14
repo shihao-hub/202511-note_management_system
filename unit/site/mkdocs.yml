@@ -1,0 +1,21 @@
+site_name: 心悦卿兮的笔记
+theme:
+  name: material  # 使用 Material 主题（需先安装）
+
+  features:
+    - navigation.tabs # 启用顶部标签式导航（Tabs Navigation）
+    - navigation.tabs.sticky # 让顶部 tabs 导航粘性固定在页面顶部
+
+nav:
+  - 首页: index.md
+  - 入门指南:
+      - 安装指南: installation.md
+      - 快速开始: quickstart.md
+  - 进阶教程:
+      - Material-for-MkDocs使用初体验: Material-for-MkDocs-使用初体验.md # 不能有空格，否则会导致卡顿，猜测是 mkdocs GET 请求的问题？
+
+
+plugins: [ ] # mkdocs 默认插件似乎只有 search，所以通过配置空列表来禁用 search，未来添加其他插件的时候不填 search 即可。比如：macros 允许你在 Markdown 文件中使用 Jinja2 模板语法；git-revision-date-localized 自动读取 Git 提交历史，为每篇文档显示 “最后更新时间”，并支持多语言本地化（如中文“2025年4月5日”）。
+
+copyright: |
+  Copyright &copy; 2025 心悦卿兮

@@ -19,12 +19,11 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
 
-from loguru import logger
 from sqlalchemy import select, delete
 
 from services import Attachment
 from models import AsyncSessionLocal
-
+from log import logger
 
 class _Cleanup:
     """清理服务

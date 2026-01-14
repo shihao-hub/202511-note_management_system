@@ -2,7 +2,6 @@ import asyncio
 from collections import namedtuple
 from typing import Any, Sequence, TypeVar, Type, Dict, TypedDict, Annotated, List
 
-from loguru import logger
 from result import Ok, Err, Result
 from sqlalchemy import select, update, insert, or_, desc, and_, func, exists, delete
 from sqlalchemy.orm import Bundle
@@ -17,6 +16,7 @@ from models import (
     Note, Attachment, UserConfig, Tag
 )
 from utils import print_interval_time
+from log import logger
 
 # [note] 项目较小时，services.py 多半是累赘，基础的 CRUD 本就不需要抽成单独的函数，当然如果多次使用，自然也是 ok 的
 #        其实即使项目小，这样一个简单的拆分操作，也是很有益处的，建议还是优先考虑拆到 services.py 中吧

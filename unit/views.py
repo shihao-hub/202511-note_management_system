@@ -15,9 +15,12 @@ View：渲染界面/序列化响应，依赖 Controller 提供的数据（不包
 
 
 """
+import functools
 import os
 import re
+import shutil
 import sys
+import tempfile
 from abc import ABC, abstractmethod, ABCMeta
 from datetime import datetime
 from functools import partial
@@ -25,17 +28,20 @@ from pathlib import Path
 from typing import Type, Self, TypeVar, Dict, Generic, get_args, get_origin, ForwardRef
 
 import numpy as np
+import aiofiles
 import pandas as pd
 import matplotlib.pyplot as plt
 import pyperclip
-from loguru import logger
-from nicegui import ui
+from nicegui import ui, run
+from nicegui.events import UploadEventArguments
 
 from utils import extract_urls, refresh_page, DeepSeekClient, go_main, go_add_note, is_valid_filename, go_get_note
+from utils.tkinter_ui import create_tk_root, import_filedialog, import_messagebox
 from services import AttachmentService, NoteService, UserConfigService
 from models import NoteTypeMaskedEnum, Attachment
 from settings import dynamic_settings
 from components import LoadingOverlay, AboutDialog, TextDialog
+from log import logger
 
 # region - template
 
@@ -204,6 +210,67 @@ class ExampleController(Controller["ExampleView"]):
 """
 
 
+def sort_easyocr_results(results, y_threshold=15):
+    """
+    将 EasyOCR 的结果按视觉行顺序排序（从上到下，每行从左到右）
+
+    :param results: EasyOCR 返回的列表，每个元素为 (bbox, text, prob)
+                    bbox = [[x1,y1], [x2,y2], [x3,y3], [x4,y4]]
+    :param y_threshold: 判断是否属于同一行的最大 y 差值（像素），根据图像调整
+    :return: 按行拼接的字符串列表，如 ["第一行文本", "第二行文本", ...]
+    """
+    if not results:
+        return []
+
+    # 提取每块文本的：平均 y（行位置）、最小 x（列位置）、文本内容
+    blocks = []
+    for bbox, text, _ in results:
+        # 计算 y_center（四个点 y 的平均值）
+        y_coords = [point[1] for point in bbox]
+        x_coords = [point[0] for point in bbox]
+        y_center = sum(y_coords) / len(y_coords)
+        x_min = min(x_coords)
+        blocks.append((y_center, x_min, text))
+
+    # 按 y_center 从小到大排序（从上到下）
+    blocks.sort(key=lambda b: b[0])
+
+    # 按 y 分组（相近 y 视为同一行）
+    lines = []
+    current_line = []
+    last_y = blocks[0][0]
+
+    for y, x, text in blocks:
+        if abs(y - last_y) <= y_threshold:
+            current_line.append((x, text))
+        else:
+            # 结束当前行
+            current_line.sort(key=lambda t: t[0])  # 按 x 从左到右
+            line_text = " ".join(t[1] for t in current_line)
+            lines.append(line_text)
+            # 开始新行
+            current_line = [(x, text)]
+            last_y = y
+
+    # 处理最后一行
+    if current_line:
+        current_line.sort(key=lambda t: t[0])
+        line_text = " ".join(t[1] for t in current_line)
+        lines.append(line_text)
+
+    return lines
+
+
+def easyocr_read_file(filepath: str, langs=None):
+    """局部函数或 lambda 函数等无法被 pickle 序列化，即不能跨进程，所以提取出来作为模块级顶层全局函数"""
+    import easyocr
+    if langs is None:
+        langs = ["ch_sim", "en"]
+    reader = easyocr.Reader(langs)
+    logger.debug("filepath: {}", filepath)
+    return reader.readtext(filepath)
+
+
 # endregion
 
 # region - build_softmenu
@@ -277,8 +344,6 @@ def build_softmenu(icon="mdi-note", size="16px", color="blue-600") -> ui.button:
             ui.menu_item("待办事项", on_click=lambda: ui.navigate.to("/todolist"))
 
             # todo: 未来主页可以用卡片式进入那个功能，header 右侧就加个返回主页就行了！
-            ui.separator()
-            ui.menu_item("OCR").tooltip("OCR 图片识别、PDF 识别并导出文本或者直接弹窗预览文本")
 
             ui.separator()
             ui.menu_item("重构前瞻", on_click=lambda: ui.navigate.to("/note/index"))
@@ -582,109 +647,234 @@ class HeaderController(Controller["HeaderView"]):
                 plt.grid(True)
 
     async def show_link_collection(self):
+        class events:  # noqa
+            @staticmethod
+            async def paste():
+                text = pyperclip.paste()
+                link.value += text
+
+            @staticmethod
+            async def confirm():
+                async def delay():
+                    dialog.close()
+                    await refresh_page()
+
+                if not text.value or text.value.strip() == "":
+                    ui.notify(f"文本不能为空", type="warning")
+                    return
+                if not link.value:
+                    ui.notify(f"链接不能为空", type="warning")
+                    return
+
+                # 提取 link 中的链接
+                urls = extract_urls(link.value)
+                if not urls:
+                    ui.notify(f"未提取到有效链接，请重新输入", type="negative")
+                    link.value = ""
+                    return
+
+                for i, url in enumerate(urls):
+                    urls[i] = f"{i + 1}. {url}"
+
+                async with NoteService() as note:
+                    result = await note.create(**dict(
+                        title=text.value,
+                        content="\n".join(urls),
+                        note_type=NoteTypeMaskedEnum.HYPERLINK
+                    ))
+                    if result.is_err():
+                        ui.notify(f"错误，原因：{result.err()}", type="negative")
+                        return
+                    ui.notify("新建超链接成功", type="positive")
+                    ui.timer(0.5, delay, once=True)
+
+            @staticmethod
+            async def ai_generate():
+                if not link.value:
+                    ui.notify("链接不能为空", type="warning")
+                    return
+
+                try:
+                    # [2025-12-10] 实践发现，pyside 会导致闪烁，还是不靠谱，套壳的话，推荐还是 electron 吧（native 启动太慢了）
+                    # self.view.loading_overlay.show()
+                    generate_btn.props("loading")
+                    confirm_btn.props("disable")
+                    async with DeepSeekClient() as client:
+                        result = await client.ai_generate_text(link.value)
+                        if result.is_err():
+                            ui.notify(f"生成失败，原因：{result.err()}", type="negative")
+                        else:
+                            ui.notify(f"生成文本成功！", type="positive")
+                            text.value = result.value
+                except Exception as e:
+                    logger.error(e)
+                finally:
+                    # self.view.loading_overlay.hide()
+                    generate_btn.props(remove="loading")
+                    confirm_btn.props(remove="disable")
+
         dialog = ui.dialog().props("persistent")
         with dialog, ui.card().classes("pb-2"):
-            # [step] ai answer: 右上角关闭按钮（用绝对定位）
-            # [question] 绝对布局到底咋布局的？
-            # [do] 当前 dialog 的布局我看起来还可以接受
+            # [step] ai answer: 右上角关闭按钮（用绝对定位）| [question] 绝对布局到底咋布局的？| [do] 当前 dialog 的布局我看起来还可以接受
             with ui.row().classes("w-full flex justify-end items-center pr-4"):
-                close = ui.icon("close").classes("cursor-pointer text-blue text-lg")
-                # close.classes("absolute top-2 right-2")
-                close.classes("cursor-pointer rounded-lg hover:bg-gray-200 ")
-                close.on("click", dialog.close)
-                # close = ui.button(icon="close", on_click=dialog.close)
-                # close.props("flat ").classes("absolute top-2 right-2")
+                ui.icon("close").classes("cursor-pointer text-blue text-lg") \
+                    .classes("cursor-pointer rounded-lg hover:bg-gray-200 ") \
+                    .on("click", dialog.close)
 
             # 该结构参考石墨文档的插入超链接的选项，虽然石墨文档的页面更舒服
-            # todo: 桌面组件建议可以参看石墨文档（或者其他软件）看看它们是如何组织组件的、如何利用空间的
-            #       哈哈，比如上传附件，限制 10MB，我的项目也可以限制 10MB
+            # todo: 桌面组件建议可以参看石墨文档（或者其他软件）看看它们是如何组织组件的、如何利用空间的。哈哈，比如上传附件，限制 10MB，我的项目也可以限制 10MB
             with ui.grid(columns=4).classes("items-center"):
+                # --- 文本:文本输入框 1:3
                 ui.label("文本").classes("text-center col-span-1")
-                text = ui.input(placeholder="输入文本").props("dense").classes("col-span-3")
+                text = ui.input(placeholder="输入文本").props("dense").classes("col-span-3") \
+                    .on("keydown.enter", events.confirm)
 
-                # text.classes("cursor-pointer")
-                # text.on("dblclick", lambda: None)
-                # text.tooltip("双击触发：根据链接内容，让 ai 生成合适的文本")
-
-                link_label = ui.label("链接").classes("text-center col-span-1")
-                link_label.tooltip("可以输入长文本，保存时会自动提取所有链接")
-                # todo: 多链接怎么办？多链接那不是这个功能的事！
-                link = ui.input(placeholder="输入链接").props("dense").classes("col-span-3")
+                # --- 链接:链接输入框 1:3
+                ui.label("链接").classes("text-center col-span-1") \
+                    .tooltip("可以输入长文本，保存时会自动提取所有链接")
+                link = ui.input(placeholder="输入链接").props("dense").classes("col-span-3") \
+                    .on("keydown.enter", events.confirm)
                 with link, ui.context_menu():
-                    async def on_click():
-                        text = pyperclip.paste()
-                        link.value += text
+                    ui.menu_item("粘贴", on_click=events.paste).tooltip("追加到末尾")
 
-                    ui.menu_item("粘贴", on_click=on_click).tooltip("追加到末尾")
-
-                ui.space().classes("col-span-3")
-
-                async def on_enter():
-                    await on_confirm_click()
-
-                text.on("keydown.enter", on_enter)
-                link.on("keydown.enter", on_enter)
-
-                async def on_confirm_click():
-                    if not text.value or text.value.strip() == "":
-                        ui.notify(f"文本不能为空", type="warning")
-                        return
-                    if not link.value:
-                        ui.notify(f"链接不能为空", type="warning")
-                        return
-
-                    # 提取 link 中的链接
-                    urls = extract_urls(link.value)
-                    if not urls:
-                        ui.notify(f"未提取到有效链接，请重新输入", type="negative")
-                        link.value = ""
-                        return
-
-                    for i, url in enumerate(urls):
-                        urls[i] = f"{i + 1}. {url}"
-
-                    async with NoteService() as note:
-                        result = await note.create(**dict(
-                            title=text.value,
-                            content="\n".join(urls),
-                            note_type=NoteTypeMaskedEnum.HYPERLINK
-                        ))
-                        if result.is_err():
-                            ui.notify(f"错误，原因：{result.err()}", type="negative")
-                        else:
-                            ui.notify("新建超链接成功", type="positive")
-
-                            async def delay():
-                                dialog.close()
-                                await refresh_page()
-
-                            ui.timer(0.5, delay, once=True)
-
-                with ui.button("确定", on_click=on_confirm_click).classes("col-span-1").props("flat"):
-                    with ui.context_menu():
-                        async def on_click():
-                            self.view.loading_overlay.show()
-                            try:
-                                async with DeepSeekClient() as client:
-                                    result = await client.ai_generate_text(link.value)
-                                    if result.is_err():
-                                        ui.notify(f"生成失败，原因：{result.err()}", type="negative")
-                                    else:
-                                        ui.notify(f"生成文本成功！", type="positive")
-                                        text.value = result.value
-                            except Exception as e:
-                                logger.error(e)
-                            self.view.loading_overlay.hide()
-
-                        ui.menu_item("ai 生成文本", on_click=on_click)
+                # --- 4 份均可单独塞一个按钮
+                ui.space().classes("col-span-2")
+                generate_btn = ui.button("生成", on_click=events.ai_generate) \
+                    .props("flat").tooltip("基于链接AI生成文本")
+                confirm_btn = ui.button("确定", on_click=events.confirm).props("flat")
 
         dialog.open()
+
+
+class HeaderEvents:
+    def __init__(self, view: "HeaderView"):
+        self.view = view
+
+    async def import_note(self):
+        """导入笔记"""
+        # 弹窗选择笔记，然后导入（对于弹窗来说，不用担心 tkinter 阻塞主线程，阻塞了没什么影响的）
+        filedialog = import_filedialog()
+        with create_tk_root():
+            filepath = filedialog.askopenfilename(
+                title="选择要上传的笔记文件",
+                filetypes=[
+                    ("文本文件", "*.txt *.md *.markdown"),
+                    ("Markdown 文件", "*.md *.markdown"),
+                    ("纯文本文件", "*.txt"),
+                    ("所有文件", "*.*")
+                ]
+            )
+
+        if not filepath:
+            ui.notify("没有选择任何文件")
+            return
+
+        title = os.path.splitext(os.path.basename(filepath))[0] + "【笔记导入】"
+        content = Path(filepath).read_text(encoding="utf-8")
+
+        async with NoteService() as service:
+            await service.create(title=title, content=content)
+            ui.notify("笔记导入成功！", type="positive")
+            ui.timer(0.5, refresh_page, once=True)
+
+    async def batch_exports(self):
+        """将所有笔记（普通笔记和超链接）导出为 markdown 文件，并存储到指定目录中"""
+
+        async def export():
+            # todo: 检测 C/D 开头，否则需要设置一个默认导出位置，建议是 C 盘的 Documents 等
+            try:
+                export_dir = Path(export_dir_input.value) / "notes"
+                if not export_dir.exists():
+                    export_dir.mkdir(parents=True)
+            except Exception as e:
+                logger.error("{}({})", e, type(e).__name__)
+                ui.notify(f"导出目录创建失败，原因：{e}", type="negative")
+                return
+            try:
+                # 迭代遍历所有普通笔记，并写入 export_dir 中，存在则覆盖，不存在则写入, 文件名格式为：{note_id}.md
+                async with NoteService() as note_service:
+                    result = await note_service.list_all()
+                    if result.is_err():
+                        ui.notify(f"获取笔记失败，原因：{result.err()}", type="negative")
+                        return
+                    notes = result.unwrap()
+                    for note in notes:
+                        async with aiofiles.open(export_dir / f"{note.id}.md", "w", encoding="utf-8") as f:
+                            await f.write(f"标题：{note.title}\n\n\n\n正文：\n\n{note.content}")
+            except Exception as e:
+                logger.error("{}({})", e, type(e).__name__)
+                ui.notify(f"导出笔记失败，原因：{e}", type="negative")
+            else:
+                ui.notify(f"导出笔记成功，共导出 {len(notes)} 条笔记，导出位置：{export_dir}", type="positive")
+                dialog.close()
+
+        with ui.dialog(value=True).props("persistent") as dialog, ui.card():
+            export_dir_input = ui.input("导出目录", placeholder="请输入正确格式的目录")
+            with ui.row().classes("w-full justify-end"):
+                ui.button("取消", on_click=dialog.close).props("flat")
+                ui.button("确定", on_click=export).props("flat")
+
+    async def ocr(self):
+        file = {}
+
+        try:
+            import easyocr
+        except ImportError as e:
+            ui.notify("OCR 识别模块未安装，请先安装 easyocr 模块", type="negative")
+            return
+
+        async def on_upload(e: UploadEventArguments):
+            file.clear()
+            with tempfile.NamedTemporaryFile(delete=False) as temp_file:
+                temp_file.write(e.content.read())
+                temp_filepath = temp_file.name
+            file["filepath"] = temp_filepath
+            file["name"] = e.name
+            file["type"] = e.type
+
+        async def do_ocr():
+            if not file:
+                ui.notify("请先上传文件", type="negative")
+                return
+            try:
+                recognition_btn.props("loading")
+                cancel_btn.props("disable")
+                results = await run.cpu_bound(easyocr_read_file, file["filepath"])
+                result_area.clear()
+                # todo: 即使调用 sort_easyocr_results 也没办法让结构合理，这时候超小模型就派上用场了
+                with result_area:
+                    ui.code("\n".join(sort_easyocr_results(results, y_threshold=15))).classes("w-3xl")
+            except Exception as e:
+                logger.error("{}({})", e, type(e).__name__)
+                ui.notify(f"OCR 识别失败，原因：{e}", type="negative")
+            finally:
+                upload.reset()  # todo: 阅读 quasar 文档和 nicegui 源代码，弄明白 upload 的细节
+                recognition_btn.props(remove="loading")
+                cancel_btn.props(remove="disable")
+                os.remove(file["filepath"])
+                file.clear()
+
+        # fixme: 其实直接让现成的 ai 服务帮你 ocr 更好，这个 easyocr 还是太轻量了，准确度也就那样
+        with ui.dialog(value=True).props("persistent") as dialog, ui.card().classes("items-center !max-w-none"):
+            # todo: 实现方便的粘贴上传（使用 ui.keyboard() 及其参数 js_handler 实现）
+            #       话说，js 我目前确实只能算是半入门，因为连基础的前端事件都没有了解多少
+            upload = ui.upload(
+                max_file_size=10 * 1024 * 1024,
+                on_upload=on_upload,
+                auto_upload=True,
+                label="上传图片"
+            ).props("accept='.jpg, .png, image/*'")
+            result_area = ui.column().classes("w-full items-center")
+            with ui.row().classes("w-full justify-end"):
+                cancel_btn = ui.button("取消", on_click=dialog.close).props("flat")
+                recognition_btn = ui.button("识别", on_click=do_ocr).props("flat")
 
 
 class HeaderView(View["HeaderController"]):
     controller_class = HeaderController
 
     async def _initialize(self):
+        self.events = HeaderEvents(self)
         self.list_btn_active = ui.context.client.page.path == "/"
         self.create_btn_active = ui.context.client.page.path == "/add_or_edit_note"
 
@@ -708,13 +898,23 @@ class HeaderView(View["HeaderController"]):
                 ui.space()
 
                 with ui.row().classes("items-center gap-x-1"):
-                    ui.button("实验室").props("flat")
+                    if os.environ.get("MKDOCS_PORT"):
+                        url = f"http://localhost:{os.environ["MKDOCS_PORT"]}"
+                        ui.button("实验室", on_click=lambda: ui.navigate.to(url)).props("flat")
+                    else:
+                        ui.button("实验室").props("flat")
                     ui.button("可视化", on_click=self.controller.visualize).props("flat")
                     ui.button("工具集", on_click=self.controller.on_toolkit_btn_click).props("flat")
 
-                    with ui.button("更多").props("flat"), ui.menu(), ui.column().classes("gap-y-0"):
+                    with ui.button("更多").props("flat"), \
+                            ui.menu(), ui.column().classes("gap-y-0"):
                         # todo: 附件新增 ocr_text 字段，将附件图片进行后台 ocr 处理（backendtasks?）| 新增通用图片上传入口
                         ui.button("图片查询").classes("w-full").props("flat")
+                        # todo: 新增选择文件或保存文件的通用功能（推荐 tkinter + native）
+                        ui.button("图片识别", on_click=self.events.ocr).classes("w-full").props("flat") \
+                            .tooltip("OCR 图片识别、PDF 识别并导出文本或者直接弹窗预览文本")
+                        ui.button("批量导出", on_click=self.events.batch_exports).classes("w-full").props("flat")
+                        ui.button("笔记导入", on_click=self.events.import_note).classes("w-full").props("flat")
 
                 ui.space()
 
@@ -766,8 +966,7 @@ class HeaderView(View["HeaderController"]):
                         # [step] ai: nicegui ui.menu 能不能实现右键点击的时候才显示
                         with create_btn, ui.context_menu():
                             # todo: 列表视图添加筛选，Note 表也要新增笔记类型，默认筛选的是 default 类型，其他类型都是不支持筛选的
-                            ui.menu_item("新建超链接", auto_close=False) \
-                                .on_click(self.controller.show_link_collection)  # noqa
+                            ui.menu_item("新建超链接", auto_close=False).on_click(self.controller.show_link_collection)
 
                         if self.list_btn_active:
                             list_btn.classes("bg-gray-200")

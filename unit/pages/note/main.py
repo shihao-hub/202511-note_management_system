@@ -9,16 +9,16 @@ from datetime import datetime
 from nicegui import ui
 from nicegui.events import GenericEventArguments, ValueChangeEventArguments
 from fastapi.requests import Request
-from loguru import logger
 
 from models import Note, NoteTypeMaskedEnum
 from utils import (
     show_config_dialog, go_edit_note, go_get_note, refresh_page,
     get_async_runner, RateLimiter, print_interval_time, IntervalTimer,
-    extract_urls
+    extract_urls, extract_bracketed_content
 )
 from services import NoteService, AttachmentService, UserConfigService, TagService
 from views import View, Controller, delete_note, HeaderView, build_footer
+from log import logger
 
 
 class PageMainController(Controller["PageMainView"]):
@@ -52,23 +52,16 @@ class PageMainController(Controller["PageMainView"]):
             await service.set_value("search_content", self.view.search_input.value)
         await self.view.rebuild_table()
 
+    async def new_generate_tags(self):
+        # [2025-12-11] make it work! -> 将 Tag 存储于 Tag 表中，并更新 note_id 字段
+        # 1. select id, title from note
+        # 2. 提取标签并创建标签，得到 Tag 表数据，但是这次需要添加 note_id 字段
+        # 完毕，旧数据兼容可以通过这样实现，但是更简单的办法是删除此处的功能，通过脚本去处理数据库数据...
+        pass
+
     async def generate_tags(self):
         async with NoteService() as note_service:
             titles = await note_service.get_titles()
-
-        def extract_bracketed_content(text: str, multiline: bool = False) -> List[str]:
-            """
-            提取文本中所有被 【】 包裹的内容
-
-            Args:
-                text: 输入字符串
-                multiline: 是否允许匹配跨行内容
-
-            Returns:
-                所有匹配到的内容列表（不含括号）
-            """
-            flags = re.DOTALL if multiline else 0
-            return re.findall(r"【(.*?)】", text, flags)
 
         extracted_tags = set()
         for title in titles:
@@ -272,73 +265,81 @@ class PageMainView(View["PageMainController"]):
                 ui.menu_item("清空标签", on_click=self._clear_tags).tooltip("清空现在生成的所有标签")
 
     async def _create_table_card(self, note: Note, attachment_count: int) -> ui.card:
-        """table card，无普遍性"""
-        # todo: 这个函数和 rebuild_table 之间到底怎么关联起来比较好呢？class？
-        with ui.card().classes(
-                "shadow-lg rounded-xl border border-gray-200 bg-white overflow-hidden") as card:
-            with ui.column().classes("w-full p-4"):  # 增加内边距，移除冗余 flex（ui.column 已是 flex）
-                # [step] ai: ui.row() 默认使用 display: flex; flex-wrap: wrap（允许换行），所以需要 flex-nowrap
-                with ui.row().classes(
-                        "w-full items-center justify-between mb-3 whitespace-nowrap flex-nowrap"):
-                    # 允许收缩，但最小为 0，配合 truncate 实现弹性截断
-                    label = ui.label(note.title)
-                    label.classes("text-lg font-semibold text-gray-800 truncate min-w-0")
-                    label.tooltip(note.title)
-                    # 固定不换行、紧凑显示
-                    # label = ui.label(str(note.created_at))
-                    # label.classes("text-sm text-gray-500 whitespace-nowrap flex-shrink-0")
-                    # label.tooltip(str(note.created_at))
+        def create_abstract_element():
+            """使用 -webkit-line-clamp 实现真正的多行省略
 
-                # todo: 依旧存在 bug，文本每行长一点，浏览器也没有放大，就会出现不会自动延展动态换行的情况
-                #       很特别，第二天我发现，是 markdown 内容的原因，感觉和特殊字符有关
-                lines = 3
-                line_height = 1.5
-                total_height = (lines + 1) * line_height  # 多加一行才行，这个 total_height 是固定了高度
-                with ui.element("div").style(f"""
-                     height: {total_height}em;
-                     overflow: hidden;
-                     display: flex;
-                     align-items: flex-start;
-                     justify-content: flex-start;
-                 """):
-                    """使用 -webkit-line-clamp 实现真正的多行省略
+            效果说明：
+            - 超出 3 行 的内容会被隐藏
+            - 最后一行末尾会自动显示 真实的 ... 省略号
+            - 不需要额外遮罩层，干净简洁
 
-                    效果说明：
-                    - 超出 3 行 的内容会被隐藏
-                    - 最后一行末尾会自动显示 真实的 ... 省略号
-                    - 不需要额外遮罩层，干净简洁
+            word-break: break-word 防止 Markdown 中有 长无空格字符串（如 URL），可能会撑破容器。
 
-                    word-break: break-word 防止 Markdown 中有 长无空格字符串（如 URL），可能会撑破容器。
+            """
 
-                    """
+            # fixme: 依旧存在 bug，文本每行长一点，浏览器也没有放大，就会出现不会自动延展动态换行的情况
+            lines = 3
+            line_height = 1.5
+            total_height = (lines + 1) * line_height  # 多加一行才行，这个 total_height 是固定了高度
+            with ui.element("div").style(f"""
+                 height: {total_height}em;
+                 overflow: hidden;
+                 display: flex;
+                 align-items: flex-start;
+                 justify-content: flex-start;
+             """) as abstract_element:
+                # markdown 会渲染一些东西，摘要页面原始一点比较好
+                ui.label(note.content).style("""
+                    display: -webkit-box;
+                    -webkit-line-clamp: {lines};
+                    -webkit-box-orient: vertical;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    line-height: {line_height};
+                    word-break: break-word;
+                """.format(lines=lines, line_height=line_height))
+            return abstract_element
 
-                    # ui.markdown(note.content) # markdown 会渲染一些东西，摘要页面原始一点比较好
-                    content_label = ui.label(note.content).style("""
-                        display: -webkit-box;
-                        -webkit-line-clamp: {lines};
-                        -webkit-box-orient: vertical;
-                        overflow: hidden;
-                        text-overflow: ellipsis;
-                        line-height: {line_height};
-                        word-break: break-word;
-                    """.format(lines=lines, line_height=line_height))
+        async def show_filter_dialog(title: str):
+            with ui.dialog(value=True) as dialog, ui.card(), ui.column():
+                # todo: 建议用 table 吧，常规增删改查，建议一律 table，毕竟我没什么设计思维
+                with ui.grid(columns=3).classes("w-64 gap-2 border-2 rounded-sm p-4"):
+                    # todo: 参考鱼皮的代码小抄，实现标签添加和显示
+                    for tag in extract_bracketed_content(title):
+                        ui.button(tag)
+                with ui.row().classes("w-full items-center justify-center"):
+                    ui.button("取消", on_click=dialog.close).props("flat dense")
+                    ui.button("保存").props("flat dense")
 
-                    # todo: 判断一下是否需要添加 tooltip，感觉鼠标太容易命中了，观感可能不太好
-                    #       注意，tooltip 可以设置背景颜色哦，绿色感官不错
-                    # content_label.tooltip(note.content[:100])
+        with ui.card().classes("shadow-lg rounded-xl border border-gray-200 bg-white overflow-hidden") as card:
+            with ui.column().classes("w-full p-4"):
+                # flex-nowrap -> 不允许换行 | truncate min-w-0 -> 允许收缩，但最小为 0，配合 truncate 实现弹性截断
+                with ui.row().classes("w-full items-center justify-between mb-2 whitespace-nowrap flex-nowrap "):
+                    ui.label(note.title).classes("text-base font-semibold text-gray-800 ""truncate min-w-0 ") \
+                        .tooltip(note.title)
+                    ui.button(icon="filter").props("flat dense size=12px color=black") \
+                        .tooltip("筛选标签").on("click", partial(show_filter_dialog, title=note.title))
+
+                # --- 摘要
+                abstract_element = create_abstract_element()
+                # abstract_element.classes("border-b border-gray-100 pb-0 mb-0")
+
+                # todo: 添加标签，但是布局变换很难受，不如直接一个小按钮然后弹窗支持编辑和修改吧！
+                # with ui.row().classes("w-full py-0 my-0"):
+                #     ui.button("知乎").props("flat dense color=grey").classes("text-sm text-gray-300")
 
                 # --- 底部行：附件数量和更新时间、查看按钮、编辑按钮、更多按钮
                 with ui.row().classes(
                         "w-full items-center justify-between "
-                        "mt-3 pt-3 border-t border-gray-100 flex-nowrap"
+                        "border-t border-gray-100 flex-nowrap"
                 ):
+                    # NOTE: 试图使用 .classes("hidden sm:inline") 做到 >sm 显示，但是实测发现，只有 inline sm:hidden 能生效... 我无语了，真对吗？也没人能讨论，唉。只能实现默认显示变大隐藏吗？
                     with ui.row().props("dense").classes(
-                            "text-sm text-gray-600 whitespace-nowrap flex-shrink-0 "
+                            "text-sm text-gray-600 "
+                            "whitespace-nowrap flex-shrink-0 "
                             "gap-x-0 "
                     ):
                         ui.label(f"{attachment_count} 个附件")
-                        # todo: 试图使用 .classes("hidden sm:inline") 做到 >sm 显示，但是实测发现，只有 inline sm:hidden 能生效...
-                        #       我无语了，真对吗？也没人能讨论，唉。只能实现默认显示变大隐藏吗？
                         ui.label("·").classes("px-1")
                         ui.label(f"{note.updated_at}").tooltip("上次编辑时间")
                     with ui.row().classes("items-center justify-between gap-x-0 flex-nowrap"):
@@ -368,8 +369,7 @@ class PageMainView(View["PageMainController"]):
                                 .props("flat round dense").classes("text-gray-500 hover:text-blue-600") \
                                 .tooltip("访问量可视化")
 
-                            # 每个笔记都可以设置截止日期和优先级等
-                            # 然后通过主页渲染出来图形，表现出来笔记的急迫性（暂时没想出来咋表达）
+                            # 每个笔记都可以设置截止日期和优先级等，然后通过主页渲染出来图形，表现出来笔记的急迫性（暂时没想出来咋表达）
                             ui.fab_action("mdi-calendar-alert") \
                                 .props("flat round dense").classes("text-gray-500 hover:text-blue-600") \
                                 .tooltip("截止日期提醒")
@@ -568,8 +568,8 @@ class PageMainView(View["PageMainController"]):
                 timer_outer.print(prefix="build ui.grid")
             profiler.disable()
             stats = pstats.Stats(profiler)
-            stats.sort_stats("cumtime") # ncalls/tottime/percall/cumtime/percall 排序用
-            stats.print_stats(10) # 不传参代表全部输出，传参代表前 X 行
+            stats.sort_stats("cumtime")  # ncalls/tottime/percall/cumtime/percall 排序用
+            stats.print_stats(10)  # 不传参代表全部输出，传参代表前 X 行
 
             await self._create_paging_control(current_page, total_pages)
 

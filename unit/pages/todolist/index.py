@@ -1,8 +1,13 @@
 from nicegui import ui, app
 from fastapi.requests import Request
 from fastapi.responses import HTMLResponse
+from jinja2 import Environment, FileSystemLoader
 
-from settings import VUE_COMPATIBLE_ENV
+VUE_COMPATIBLE_ENV = Environment(
+    loader=FileSystemLoader("templates"),
+    variable_start_string="[[",
+    variable_end_string="]]"
+)
 
 
 @app.get("/todolist/index", response_class=HTMLResponse)

@@ -19,7 +19,6 @@ from datetime import datetime, timedelta, timezone
 from functools import partial
 
 from pymemcache import Client
-from loguru import logger
 from result import Result, Ok, Err
 from portpicker import pick_unused_port
 from sqlalchemy.ext.asyncio import async_scoped_session, AsyncSession
@@ -31,6 +30,7 @@ from models import AsyncSessionLocal, Attachment
 from settings import dynamic_settings, ENV
 # from services import UserConfigService # 【循环依赖】services 和 utils 可能会出现循环依赖
 from mediator import get_user_config_service
+from log import logger
 
 from .cleanup import cleanup  # Usage: from utils import cleanup
 from .ai import DeepSeekClient, build_ai_chain, audio_to_text_by_qwen3_asr
@@ -427,6 +427,21 @@ async def asyncify(sync_func: Callable[[], A], *args) -> A:
 
 
 sync_to_async = asyncify
+
+
+def extract_bracketed_content(text: str, multiline: bool = False) -> List[str]:
+    """
+    提取文本中所有被 【】 包裹的内容
+
+    Args:
+        text: 输入字符串
+        multiline: 是否允许匹配跨行内容
+
+    Returns:
+        所有匹配到的内容列表（不含括号）
+    """
+    flags = re.DOTALL if multiline else 0
+    return re.findall(r"【(.*?)】", text, flags)
 
 
 # endregion

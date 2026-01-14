@@ -2,7 +2,7 @@ import asyncio
 import functools
 import time
 
-from loguru import logger
+from log import logger
 
 
 def print_interval_time(func):
